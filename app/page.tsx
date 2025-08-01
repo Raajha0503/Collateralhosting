@@ -1354,16 +1354,16 @@ const BookingWindowModal = ({ isOpen, onClose, call, onBook }) => {
 
   const BookingScorecard = ({ title, value, currency, className }) => (
     <div className={`p-4 rounded-xl text-center ${className}`}>
-      <p className="text-sm text-gray-400 uppercase tracking-wider">{title}</p>
+      <p className="text-sm text-white font-semibold uppercase tracking-wider">{title}</p>
       <p className="text-3xl font-bold text-white mt-2">{formatCurrencyDetailed(value, currency)}</p>
     </div>
   )
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-4xl">
-        <div className="p-6 border-b border-gray-700">
-          <h3 className="text-xl font-bold text-white">
+      <div className="bg-white border border-border rounded-2xl shadow-2xl w-full max-w-4xl">
+        <div className="p-6 border-b border-border">
+          <h3 className="text-xl font-bold text-foreground">
             Manual Booking for {call.clientId} ({call.id})
           </h3>
         </div>
@@ -1383,37 +1383,37 @@ const BookingWindowModal = ({ isOpen, onClose, call, onBook }) => {
                 className="bg-purple-900/40"
               />
             </div>
-            <div className="bg-gray-800/70 p-4 rounded-xl border border-gray-700/50">
-              <h4 className="font-semibold text-gray-300 mb-3 flex items-center">
+            <div className="bg-muted p-4 rounded-xl border border-border">
+              <h4 className="font-semibold text-foreground mb-3 flex items-center">
                 <Mail size={18} className="mr-2" /> Client Communication
               </h4>
               <div
-                className="bg-gray-900/50 p-4 rounded-lg text-sm text-gray-400 space-y-2 whitespace-pre-wrap font-mono"
+                className="bg-background p-4 rounded-lg text-sm text-foreground space-y-2 whitespace-pre-wrap font-mono border border-input"
                 dangerouslySetInnerHTML={{
-                  __html: emailBody.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>'),
+                  __html: emailBody.replace(/\*\*(.*?)\*\*/g, '<strong class="text-foreground">$1</strong>'),
                 }}
               ></div>
             </div>
           </div>
-          <div className="md:col-span-2 bg-gray-800/50 p-6 rounded-xl border border-gray-700/50 flex flex-col justify-center">
-            <h4 className="font-semibold text-white text-lg mb-4">Enter Booking Amount</h4>
-            <p className="text-sm text-gray-400 mb-2">Enter the amount to book based on the client's agreement.</p>
+          <div className="md:col-span-2 bg-muted p-6 rounded-xl border border-border flex flex-col justify-center">
+            <h4 className="font-semibold text-foreground text-lg mb-4">Enter Booking Amount</h4>
+            <p className="text-sm text-muted-foreground mb-2">Enter the amount to book based on the client's agreement.</p>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{call.currency}</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">{call.currency}</span>
               <input
                 type="number"
                 value={bookedAmount}
                 onChange={(e) => setBookedAmount(e.target.value)}
                 placeholder="0.00"
-                className="w-full bg-gray-900/50 border border-gray-600 text-white text-xl font-semibold rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-3 pl-14 text-right"
+                className="w-full bg-background border border-input text-foreground text-xl font-semibold rounded-lg focus:ring-ring focus:border-ring block p-3 pl-14 text-right"
               />
             </div>
-            {errorMessage && <p className="text-red-400 text-xs mt-2">{errorMessage}</p>}
+            {errorMessage && <p className="text-red-600 text-xs mt-2">{errorMessage}</p>}
 
-            <div className="mt-4 pt-4 border-t border-gray-700">
+            <div className="mt-4 pt-4 border-t border-border">
               {Number.parseFloat(bookedAmount) < call.callAmount && (
-                <div className="p-3 mb-4 bg-yellow-900/30 border border-yellow-700/50 rounded-lg text-center">
-                  <p className="text-yellow-300 text-sm font-semibold">
+                <div className="p-3 mb-4 bg-yellow-100 border border-yellow-300 rounded-lg text-center">
+                  <p className="text-yellow-800 text-sm font-semibold">
                     This will create a dispute of{" "}
                     {formatCurrencyDetailed(call.callAmount - (Number.parseFloat(bookedAmount) || 0), call.currency)}.
                   </p>
@@ -1428,8 +1428,8 @@ const BookingWindowModal = ({ isOpen, onClose, call, onBook }) => {
             </div>
           </div>
         </div>
-        <div className="p-4 bg-gray-800/50 border-t border-gray-700 flex justify-end">
-          <button onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">
+        <div className="p-4 bg-muted border-t border-border flex justify-end">
+          <button onClick={onClose} className="bg-muted hover:bg-muted/80 text-foreground font-bold py-2 px-4 rounded-lg">
             Cancel
           </button>
         </div>
@@ -2929,12 +2929,12 @@ const MarginCallWorkflow = () => {
   )
 
   const DisputeInfo = ({ reason }) => (
-    <div className="mt-4 p-4 bg-yellow-900/30 border-l-4 border-yellow-500 rounded-r-lg">
-      <h4 className="font-semibold text-yellow-300 flex items-center">
+    <div className="mt-4 p-4 bg-yellow-100 border-l-4 border-yellow-500 rounded-r-lg">
+      <h4 className="font-semibold text-yellow-800 flex items-center">
         <AlertTriangle size={16} className="mr-2" />
         Dispute Reason
       </h4>
-      <p className="text-sm text-yellow-200 mt-1">{reason}</p>
+      <p className="text-sm text-yellow-700 mt-1">{reason}</p>
     </div>
   )
 
