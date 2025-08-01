@@ -1678,6 +1678,120 @@ const CollateralDashboard = () => {
     })
   }
 
+  const downloadSampleCsv = (type) => {
+    const timestamp = new Date().toISOString().split('T')[0]
+    
+    if (type === 'all') {
+      // Generate sample margin call data
+      const headers = [
+        "Call ID",
+        "Client ID",
+        "Date",
+        "Value",
+        "Currency",
+        "Type",
+        "Direction",
+        "Status",
+        "Asset Type",
+        "Fail Reason",
+        "Notes"
+      ]
+      
+      const sampleData = [
+        {
+          id: "MC-SAMPLE-001",
+          clientId: "CID5962",
+          date: "2025-07-15",
+          value: 2500000,
+          currency: "USD",
+          type: "Electronic",
+          direction: "Barclays Call",
+          status: "Settled",
+          assetType: "Cash",
+          failReason: "",
+          notes: "Standard margin call processed successfully"
+        },
+        {
+          id: "MC-SAMPLE-002",
+          clientId: "CID2693",
+          date: "2025-07-16",
+          value: 1800000,
+          currency: "EUR",
+          type: "Manual",
+          direction: "Client Call",
+          status: "Disputed",
+          assetType: "Bond",
+          failReason: "",
+          notes: "Client disputed bond valuation"
+        },
+        {
+          id: "MC-SAMPLE-003",
+          clientId: "CID5299",
+          date: "2025-07-17",
+          value: 3200000,
+          currency: "USD",
+          type: "Electronic",
+          direction: "Barclays Call",
+          status: "Failed",
+          assetType: "Cash",
+          failReason: "Insufficient Funds",
+          notes: "Client account had insufficient funds"
+        },
+        {
+          id: "MC-SAMPLE-004",
+          clientId: "CID4233",
+          date: "2025-07-18",
+          value: 950000,
+          currency: "GBP",
+          type: "Electronic",
+          direction: "Client Call",
+          status: "Settled",
+          assetType: "Cash",
+          failReason: "",
+          notes: "Standard settlement completed"
+        },
+        {
+          id: "MC-SAMPLE-005",
+          clientId: "CID7506",
+          date: "2025-07-19",
+          value: 4100000,
+          currency: "USD",
+          type: "Manual",
+          direction: "Barclays Call",
+          status: "Pending",
+          assetType: "Bond",
+          failReason: "",
+          notes: "Awaiting client confirmation"
+        }
+      ]
+
+      const csvRows = sampleData.map((call) => {
+        const row = [
+          call.id,
+          call.clientId,
+          call.date,
+          call.value,
+          call.currency,
+          call.type,
+          call.direction,
+          call.status,
+          call.assetType,
+          call.failReason || "N/A",
+          call.notes
+        ]
+        return row.join(",")
+      })
+
+      const csvString = [headers.join(","), ...csvRows].join("\n")
+
+      downloadFile({
+        data: csvString,
+        fileName: `sample_margin_calls_${timestamp}.csv`,
+        fileType: "text/csv",
+      })
+    }
+  }
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -1848,9 +1962,84 @@ const CollateralDashboard = () => {
               <h3 className="text-lg font-semibold text-foreground mb-4">Collateral Holdings Breakdown</h3>
               <div className="flex items-center space-x-4">
                 <DownloadDropdown
-                  onExport={(type) =>
-                    downloadFile({ data: "", fileName: `collateral_holdings.${type}`, fileType: "text/csv" })
-                  }
+                  onExport={(type) => {
+                    if (!displayData) return
+                    
+                    let data = ""
+                    const timestamp = new Date().toISOString().split('T')[0]
+                    
+                    if (type === "csv") {
+                      // CSV format
+                      data = "Category,Type,Amount,Currency\n"
+                      data += `Cash Holdings,Total,${displayData.collateral.cash.toLocaleString()},USD\n`
+                      Object.entries(displayData.collateral.cashBreakdown).forEach(([currency, amount]) => {
+                        data += `Cash Holdings,${currency},${amount.toLocaleString()},USD\n`
+                      })
+                      data += `Bond Holdings,Total,${displayData.collateral.bonds.toLocaleString()},USD\n`
+                      Object.entries(displayData.collateral.bondBreakdown).forEach(([type, amount]) => {
+                        data += `Bond Holdings,${type},${amount.toLocaleString()},USD\n`
+                      })
+                      
+                      downloadFile({ 
+                        data, 
+                        fileName: `collateral_holdings_${timestamp}.csv`, 
+                        fileType: "text/csv" 
+                      })
+                    } else if (type === "pdf") {
+                      // Generate proper PDF using jsPDF
+                      const { jsPDF } = require('jspdf')
+                      const doc = new jsPDF()
+                      
+                      // Add title
+                      doc.setFontSize(20)
+                      doc.setFont('helvetica', 'bold')
+                      doc.text('Collateral Holdings Breakdown Report', 20, 30)
+                      
+                      // Add timestamp
+                      doc.setFontSize(12)
+                      doc.setFont('helvetica', 'normal')
+                      doc.text(`Generated: ${timestamp}`, 20, 45)
+                      
+                      // Add Cash Holdings section
+                      doc.setFontSize(16)
+                      doc.setFont('helvetica', 'bold')
+                      doc.text('Cash Holdings', 20, 65)
+                      doc.setFontSize(12)
+                      doc.setFont('helvetica', 'normal')
+                      doc.text(`Total: ${formatCurrency(displayData.collateral.cash)}`, 30, 80)
+                      
+                      let yPos = 95
+                      Object.entries(displayData.collateral.cashBreakdown).forEach(([currency, amount]) => {
+                        doc.text(`${currency}: ${formatCurrency(amount)}`, 40, yPos)
+                        yPos += 10
+                      })
+                      
+                      // Add Bond Holdings section
+                      yPos += 10
+                      doc.setFontSize(16)
+                      doc.setFont('helvetica', 'bold')
+                      doc.text('Bond Holdings', 20, yPos)
+                      doc.setFontSize(12)
+                      doc.setFont('helvetica', 'normal')
+                      yPos += 15
+                      doc.text(`Total: ${formatCurrency(displayData.collateral.bonds)}`, 30, yPos)
+                      
+                      yPos += 15
+                      Object.entries(displayData.collateral.bondBreakdown).forEach(([type, amount]) => {
+                        doc.text(`${type}: ${formatCurrency(amount)}`, 40, yPos)
+                        yPos += 10
+                      })
+                      
+                      // Add total
+                      yPos += 10
+                      doc.setFontSize(14)
+                      doc.setFont('helvetica', 'bold')
+                      doc.text(`Total Collateral: ${formatCurrency(displayData.collateral.total)}`, 20, yPos)
+                      
+                      // Save the PDF
+                      doc.save(`collateral_holdings_${timestamp}.pdf`)
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -2609,12 +2798,12 @@ const MarginCallWorkflow = () => {
 
   const BookingStatusTag = ({ status }) => {
     const statusStyles = {
-      "Fully Booked": "bg-green-600/50 text-green-300",
-      "Partially Disputed": "bg-yellow-600/50 text-yellow-300",
-      "Fully Disputed": "bg-red-600/50 text-red-300",
+      "Fully Booked": "bg-green-600 text-green-100",
+      "Partially Disputed": "bg-yellow-600 text-yellow-100",
+      "Fully Disputed": "bg-red-600 text-red-100",
     }
     return (
-      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusStyles[status] || "bg-gray-600"}`}>
+      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusStyles[status] || "bg-gray-600 text-gray-100"}`}>
         {status}
       </span>
     )
@@ -2660,18 +2849,18 @@ const MarginCallWorkflow = () => {
     </div>
   )
 
-  const PortfolioTable = ({ portfolio, currency, isDisputed }) => {
+  const PortfolioTable = ({ portfolio, currency, isDisputed, direction }) => {
     const netPnl = portfolio.reduce((acc, trade) => acc + trade.pnl, 0)
-    const payableBy = netPnl >= 0 ? "Client" : "Barclays"
+    const payableBy = direction === "inbound" ? "BARCLAYS" : "CLIENT"
 
     return (
       <div>
         <div className="flex justify-between items-center mb-3">
           <div />
-          <p className="text-xs text-muted-foreground">
-            <span className="text-green-600">Green PnL:</span> Payable by Client |{" "}
-            <span className="text-red-600">Red PnL:</span> Payable by Barclays
-          </p>
+                      <p className="text-xs text-muted-foreground">
+              <span className="text-green-600">Green PnL:</span> Payable by {direction === "inbound" ? "BARCLAYS" : "CLIENT"} |{" "}
+              <span className="text-red-600">Red PnL:</span> Payable by {direction === "inbound" ? "BARCLAYS" : "CLIENT"}
+            </p>
         </div>
         <div
           className={`bg-muted rounded-lg overflow-hidden ${isDisputed ? "border-2 border-yellow-500/50" : ""}`}
@@ -2698,7 +2887,7 @@ const MarginCallWorkflow = () => {
                     {trade.priceChange.toFixed(2)}%
                   </td>
                   <td className={`p-3 text-right font-medium ${trade.pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    {trade.pnl >= 0 ? "Client" : "Barclays"}
+                    {direction === "inbound" ? "BARCLAYS" : "CLIENT"}
                   </td>
                 </tr>
               ))}
@@ -2904,11 +3093,12 @@ const MarginCallWorkflow = () => {
                     </button>
                     {isPortfolioVisible && (
                       <div className="mt-2 p-4 bg-muted/50 rounded-b-lg">
-                        <PortfolioTable
-                          portfolio={selectedCall.portfolio}
-                          currency={selectedCall.currency}
-                          isDisputed={selectedCall.disputeAmount > 0}
-                        />
+                                                  <PortfolioTable
+                            portfolio={selectedCall.portfolio}
+                            currency={selectedCall.currency}
+                            isDisputed={selectedCall.disputeAmount > 0}
+                            direction={selectedCall.direction}
+                          />
                       </div>
                     )}
                   </div>
@@ -3293,17 +3483,17 @@ const DailyActivityLog = () => {
   const getStatusClass = (status) => {
     switch (status) {
       case "Settled":
-        return "bg-green-500/20 text-green-300"
+        return "bg-green-600 text-green-100"
       case "Disputed":
-        return "bg-yellow-500/20 text-yellow-300"
+        return "bg-yellow-600 text-yellow-100"
       case "Pending":
-        return "bg-blue-500/20 text-blue-300"
+        return "bg-blue-600 text-blue-100"
       case "Agreed":
-        return "bg-cyan-500/20 text-cyan-300"
+        return "bg-cyan-600 text-cyan-100"
       case "Overdue":
-        return "bg-red-500/20 text-red-300"
+        return "bg-red-600 text-red-100"
       default:
-        return "bg-gray-500/20 text-gray-300"
+        return "bg-gray-600 text-gray-100"
     }
   }
 
@@ -3580,47 +3770,47 @@ const DailyActivityLog = () => {
                     </td>
                   </tr>
                   {activeRowId === item.id && (
-                    <tr className="bg-gray-700/50">
+                    <tr className="bg-muted">
                       <td colSpan="7" className="p-0">
                         <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
                           <div className="md:col-span-2">
-                            <h4 className="font-semibold text-white mb-2">Payment Details</h4>
-                            <div className="text-xs space-y-2 text-gray-300">
+                            <h4 className="font-semibold text-foreground mb-2">Payment Details</h4>
+                            <div className="text-xs space-y-2 text-muted-foreground">
                               <p>
-                                <span className="font-semibold text-gray-400">Flow:</span>{" "}
+                                <span className="font-semibold text-muted-foreground">Flow:</span>{" "}
                                 {item.dir === "Payable" ? `Barclays -> ${item.client}` : `${item.client} -> Barclays`}
                               </p>
                               <p>
-                                <span className="font-semibold text-gray-400">Account:</span>{" "}
+                                <span className="font-semibold text-muted-foreground">Account:</span>{" "}
                                 <span className="font-mono">{item.acct || item.account || "N/A"}</span>
                               </p>
                               <p>
-                                <span className="font-semibold text-gray-400">Status:</span>{" "}
+                                <span className="font-semibold text-muted-foreground">Status:</span>{" "}
                                 <span className="font-medium">{item.status || item.pmtStatus || "N/A"}</span>
                               </p>
                               <p>
-                                <span className="font-semibold text-gray-400">Ops Team Notes:</span> {item.notes}
+                                <span className="font-semibold text-muted-foreground">Ops Team Notes:</span> {item.notes}
                               </p>
                             </div>
                             <div className="mt-4">
                               <button
                                 onClick={() => handleOpenEmailModal(item)}
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs"
+                                className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-1.5 px-3 rounded-lg text-xs"
                               >
                                 Compose AI Email
                               </button>
                             </div>
                           </div>
                           <div>
-                            <h4 className="font-semibold text-white mb-2">Recent Client History</h4>
+                            <h4 className="font-semibold text-foreground mb-2">Recent Client History</h4>
                             <ul className="text-xs space-y-1">
                               <li className="flex justify-between">
-                                <span className="text-gray-400">20 Jul 2025:</span>
-                                <span className="text-green-400">Settled (T+0, 10:15 GMT)</span>
+                                <span className="text-muted-foreground">20 Jul 2025:</span>
+                                <span className="text-green-600">Settled (T+0, 10:15 GMT)</span>
                                 </li>
                               <li className="flex justify-between">
-                                <span className="text-gray-400">21 Jul 2025:</span>
-                                <span className="text-orange-400">Agreed (11:00 GMT)</span>
+                                <span className="text-muted-foreground">21 Jul 2025:</span>
+                                <span className="text-orange-600">Agreed (11:00 GMT)</span>
                               </li>
                             </ul>
                           </div>
@@ -3637,10 +3827,10 @@ const DailyActivityLog = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col p-6">
+          <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col p-6">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-white">Compose AI-Generated Email</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white">
+              <h3 className="text-lg font-semibold text-foreground">Compose AI-Generated Email</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-muted-foreground hover:text-foreground">
                 <X size={24} />
               </button>
             </div>
@@ -3648,7 +3838,7 @@ const DailyActivityLog = () => {
               <textarea
                 value={emailContent}
                 onChange={(e) => setEmailContent(e.target.value)}
-                className="w-full h-80 bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-gray-300"
+                className="w-full h-80 bg-background border border-input rounded-lg p-3 text-sm text-foreground"
                 placeholder="Generating AI-powered draft..."
                 disabled={isSending}
               ></textarea>
@@ -3656,14 +3846,14 @@ const DailyActivityLog = () => {
             <div className="mt-4 flex justify-end space-x-3">
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="bg-gray-600 hover:bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg text-sm"
+                className="bg-muted hover:bg-muted/80 text-foreground font-semibold py-2 px-4 rounded-lg text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSendEmail}
                 disabled={isSending}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-sm flex items-center disabled:opacity-50"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-2 px-4 rounded-lg text-sm flex items-center disabled:opacity-50"
               >
                 {isSending ? <Loader2 className="animate-spin mr-2" size={16} /> : <Send className="mr-2" size={16} />}
                 Send Email
