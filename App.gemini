@@ -1,0 +1,2531 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2822
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 import React, \{ useState, useRef, useEffect, useMemo \} from 'react';\
+import \{ User, Briefcase, DollarSign, Shield, Home, Settings, TrendingUp, Users, FileDown, BarChart2, ChevronDown, CheckCircle, Filter, Calendar, Sparkles, X, AlertCircle, AlertTriangle, GitMerge, Activity, FileCheck, Globe, Landmark, Scale, Coins, Search, Edit, Clock, ArrowRight, Check, XCircle, MessageSquare, Send, Mail, RefreshCw, AlertOctagon, ArrowUp, ArrowDown, Loader2, MoreHorizontal, Phone, Mail as MailIcon, PlusCircle, ArrowUpDown \} from 'lucide-react';\
+\
+// --- Helper Functions (can be moved to a utils.js file later) ---\
+const downloadFile = (\{ data, fileName, fileType \}) => \{\
+  const blob = new Blob([data], \{ type: fileType \});\
+  const a = document.createElement('a');\
+  a.download = fileName;\
+  a.href = window.URL.createObjectURL(blob);\
+  const clickEvt = new MouseEvent('click', \{ view: window, bubbles: true, cancelable: true \});\
+  a.dispatchEvent(clickEvt);\
+  a.remove();\
+\};\
+\
+const formatCurrency = (value) => \{\
+    return new Intl.NumberFormat('en-US', \{ style: 'currency', currency: 'USD' \}).format(value || 0);\
+\};\
+\
+// A dedicated formatter for scorecards to prevent UI overlap with large numbers.\
+const formatCurrencyForScorecard = (value) => \{\
+    if (!value && value !== 0) return '$0';\
+    if (Math.abs(value) >= 1_000_000_000) return `$$\{(value / 1_000_000_000).toFixed(1)\}B`;\
+    if (Math.abs(value) >= 1_000_000) return `$$\{(value / 1_000_000).toFixed(1)\}M`;\
+    if (Math.abs(value) >= 1_000) return `$$\{(value / 1_000).toFixed(0)\}K`;\
+    return new Intl.NumberFormat('en-US', \{ style: 'currency', currency: 'USD' \}).format(value);\
+\};\
+\
+\
+const formatCurrencyDetailed = (value, currency = 'USD') => \{\
+    return new Intl.NumberFormat('en-US', \{ style: 'currency', currency \}).format(value);\
+\};\
+\
+const formatNumber = (value) => (value || 0).toLocaleString();\
+\
+const formatDate = (date) => \{\
+    if(!date) return '';\
+    const d = new Date(date);\
+    d.setUTCHours(0,0,0,0); // Adjust for timezone issues\
+    return d.toLocaleDateString('en-GB', \{ day: '2-digit', month: 'short', year: 'numeric' \});\
+\};\
+\
+\
+// --- MOCK DATABASE (can be moved to a data.js file later) ---\
+const clientIds = ['CID5962', 'CID2693', 'CID5299', 'CID4233', 'CID7506', 'CID1598', 'CID8072', 'CID7079', 'CID8079', 'CID3450'];\
+const fixedTodayForDashboard = new Date('2025-07-18T12:00:00Z'); // Use a fixed date for consistent demo data for dashboard\
+const generateRandomDate = (start, end) => new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));\
+\
+const clientDetailsData = [\
+    \{ clientId: 'CID5962', accountName: 'Pinnacle Global Fund', accountNumber: 'US-ACCT-5962', domicile: 'USA', lei: '54930001B3S1S8B3S1S8A', mta: \{ amount: 500000, currency: 'USD' \}, currencies: ['USD', 'EUR'], assets: ['US Treasuries'], holidays: ['US', 'UK'], proposedAssets: [\{name: 'Emerging Market Debt', reason: 'Exceeds risk threshold'\}], threshold: 1000000, reportingCurrency: 'USD', contact: \{ phone: '+1-202-555-0149', email: 'ops@pinnacleglobal.com' \}, notificationTime: '10:00 AM New York', settlementPeriod: 'T+0', principalEntity: 'Barclays Bank PLC London' \},\
+    \{ clientId: 'CID2693', accountName: 'Sterling Capital', accountNumber: 'UK-ACCT-2693', domicile: 'UK', lei: '54930002B3S1S8B3S1S8B', mta: \{ amount: 250000, currency: 'GBP' \}, currencies: ['GBP', 'USD', 'EUR'], assets: ['UK Gilts'], holidays: ['UK'], proposedAssets: [], threshold: 0, reportingCurrency: 'GBP', contact: \{ phone: '+44-20-7946-0958', email: 'contact@sterlingcap.co.uk' \}, notificationTime: '10:00 AM London', settlementPeriod: 'T+0', principalEntity: 'Barclays Bank PLC London' \},\
+    \{ clientId: 'CID5299', accountName: 'EuroPrime Investors', accountNumber: 'DE-ACCT-5299', domicile: 'Germany', lei: '54930003B3S1S8B3S1S8C', mta: \{ amount: 500000, currency: 'EUR' \}, currencies: ['EUR'], assets: ['German Bunds'], holidays: ['TARGET2'], proposedAssets: [\{name: 'Municipal Bonds', reason: 'Liquidity concerns'\}], threshold: 2000000, reportingCurrency: 'EUR', contact: \{ phone: '+49-30-567-95-123', email: 'invest@europrime.de' \}, notificationTime: '11:00 AM Frankfurt', settlementPeriod: 'T+0', principalEntity: 'Barclays Bank Ireland' \},\
+    \{ clientId: 'CID4233', accountName: 'Nikkei Growth Partners', accountNumber: 'JP-ACCT-4233', domicile: 'Japan', lei: '54930004B3S1S8B3S1S8D', mta: \{ amount: 10000000, currency: 'JPY' \}, currencies: ['JPY', 'USD'], assets: ['JGBs'], holidays: ['Japan'], proposedAssets: [], threshold: 0, reportingCurrency: 'JPY', contact: \{ phone: '+81-3-4567-8901', email: 'support@nikkeigrowth.jp' \}, notificationTime: '11:00 AM Tokyo', settlementPeriod: 'T+1', principalEntity: 'Barclays Bank PLC London' \},\
+    \{ clientId: 'CID7506', accountName: 'Societe Generale Alpha', accountNumber: 'FR-ACCT-7506', domicile: 'France', lei: '54930005B3S1S8B3S1S8E', mta: \{ amount: 400000, currency: 'EUR' \}, currencies: ['EUR', 'USD'], assets: ['French OATs'], holidays: ['TARGET2'], proposedAssets: [], threshold: 1000000, reportingCurrency: 'EUR', contact: \{ phone: '+33-1-23-45-67-89', email: 'alpha@socgen.fr' \}, notificationTime: '11:00 AM Paris', settlementPeriod: 'T+0', principalEntity: 'Barclays Bank Ireland' \},\
+    \{ clientId: 'CID1598', accountName: 'Maple Leaf Holdings', accountNumber: 'CA-ACCT-1598', domicile: 'Canada', lei: '54930006B3S1S8B3S1S8F', mta: \{ amount: 300000, currency: 'CAD' \}, currencies: ['CAD', 'USD'], assets: ['Canadian Gov Bonds'], holidays: ['Canada', 'US'], proposedAssets: [], threshold: 1000000, reportingCurrency: 'CAD', contact: \{ phone: '+1-416-555-0199', email: 'accounts@mapleleaf.ca' \}, notificationTime: '10:00 AM Toronto', settlementPeriod: 'T+0', principalEntity: 'Barclays Bank PLC London' \},\
+    \{ clientId: 'CID8072', accountName: 'Down Under Capital', accountNumber: 'AU-ACCT-8072', domicile: 'Australia', lei: '54930007B3S1S8B3S1S8G', mta: \{ amount: 500000, currency: 'AUD' \}, currencies: ['AUD', 'USD'], assets: ['Australian Gov Bonds'], holidays: ['Australia'], proposedAssets: [\{name: 'Convertible Bonds', reason: 'Below required credit rating'\}], threshold: 2000000, reportingCurrency: 'AUD', contact: \{ phone: '+61-2-9876-5432', email: 'info@downundercap.com.au' \}, notificationTime: '11:00 AM Sydney', settlementPeriod: 'T+1', principalEntity: 'Barclays Bank PLC London' \},\
+    \{ clientId: 'CID7079', accountName: 'Helvetia Wealth Mgmt', accountNumber: 'CH-ACCT-7079', domicile: 'Switzerland', lei: '54930008B3S1S8B3S1S8H', mta: \{ amount: 500000, currency: 'CHF' \}, currencies: ['CHF', 'EUR'], assets: ['Swiss Gov Bonds'], holidays: ['Switzerland'], proposedAssets: [], threshold: 0, reportingCurrency: 'CHF', contact: \{ phone: '+41-44-212-3456', email: 'ops@helvetia.ch' \}, notificationTime: '11:00 AM Zurich', settlementPeriod: 'T+0', principalEntity: 'Barclays Bank Ireland' \},\
+    \{ clientId: 'CID8079', accountName: 'Britannia Investments', accountNumber: 'UK-ACCT-8079', domicile: 'UK', lei: '54930009B3S1S8B3S1S8I', mta: \{ amount: 1000000, currency: 'GBP' \}, currencies: ['GBP', 'USD'], assets: ['UK Gilts'], holidays: ['UK', 'US'], proposedAssets: [], threshold: 2000000, reportingCurrency: 'GBP', contact: \{ phone: '+44-20-8123-4567', email: 'admin@britannia-inv.co.uk' \}, notificationTime: '10:00 AM London', settlementPeriod: 'T+0', principalEntity: 'Barclays Bank PLC London' \},\
+    \{ clientId: 'CID3450', accountName: 'Liberty Capital Group', accountNumber: 'US-ACCT-3450', domicile: 'USA', lei: '54930010B3S1S8B3S1S8J', mta: \{ amount: 750000, currency: 'USD' \}, currencies: ['USD'], assets: ['US Treasuries'], holidays: ['US'], proposedAssets: [\{name: 'High-Yield Bonds', reason: 'Below required credit rating'\}], threshold: 1000000, reportingCurrency: 'USD', contact: \{ phone: '+1-312-555-0178', email: 'trading@libertycg.com' \}, notificationTime: '10:00 AM Chicago', settlementPeriod: 'T+0', principalEntity: 'Barclays Bank PLC London' \},\
+    \{ clientId: 'Citibank', accountName: 'Citibank N.A.', mta: \{ amount: 1000000, currency: 'USD' \} \},\
+    \{ clientId: 'Goldman Sachs', accountName: 'Goldman Sachs & Co. LLC', mta: \{ amount: 1000000, currency: 'USD' \} \},\
+    \{ clientId: 'Morgan Stanley', accountName: 'Morgan Stanley', mta: \{ amount: 1000000, currency: 'USD' \} \},\
+    \{ clientId: 'JPMorgan', accountName: 'JPMorgan Chase Bank, N.A.', mta: \{ amount: 1000000, currency: 'USD' \} \},\
+];\
+\
+const allMarginCalls = Array.from(\{ length: 500 \}, (_, i) => \{\
+    const statusOptions = ['Settled', 'Settled', 'Settled', 'Settled', 'Disputed', 'Failed'];\
+    const failReasons = ['Incorrect SSI', 'Insufficient Funds/Securities', 'Late Matching', 'Market Holiday', 'Other'];\
+    const status = statusOptions[Math.floor(Math.random() * statusOptions.length)];\
+    return \{\
+        id: `MC-$\{1000 + i\}`,\
+        clientId: clientIds[Math.floor(Math.random() * clientIds.length)],\
+        date: generateRandomDate(new Date(fixedTodayForDashboard.getFullYear(), fixedTodayForDashboard.getMonth() - 3, 1), fixedTodayForDashboard),\
+        value: Math.floor(Math.random() * 5000000) + 10000,\
+        type: Math.random() > 0.3 ? 'Electronic' : 'Manual',\
+        direction: Math.random() > 0.5 ? 'Barclays Call' : 'Client Call',\
+        status: status,\
+        assetType: Math.random() > 0.4 ? 'Cash' : 'Bond',\
+        failReason: status === 'Failed' ? failReasons[Math.floor(Math.random() * failReasons.length)] : null,\
+    \};\
+\});\
+\
+const ISDA_AGREEMENT_TEXT = `\
+(Multicurrency-Cross Border)\
+ISDA - International Swap Dealers Association, Inc.\
+MASTER AGREEMENT dated as of July 7, 2025\
+between ALPHA LTD. ("Party A") and BARCLAYS ("Party B")\
+\
+1. Interpretation\
+(a) Definitions. The terms defined in Section 14 and in the Schedule will have the meanings therein specified for the purpose of this Master Agreement.\
+(b) Inconsistency. In the event of any inconsistency between the provisions of the Schedule and the other provisions of this Master Agreement, the Schedule will prevail. In the event of any inconsistency between the provisions of any Confirmation and this Master Agreement (including the Schedule), such Confirmation will prevail for the purpose of the relevant Transaction.\
+(c) Single Agreement. All Transactions are entered into in reliance on the fact that this Master Agreement and all Confirmations form a single agreement between the parties (collectively referred to as this "Agreement"), and the parties would not otherwise enter into any Transactions.\
+\
+2. Obligations\
+(a) General Conditions.\
+(i) Each party will make each payment or delivery specified in each Confirmation to be made by it, subject to the other provisions of this Agreement.\
+(ii) Payments under this Agreement will be made on the due date for value on that date in the place of the account specified in the relevant Confirmation or otherwise pursuant to this Agreement, in freely transferable funds and in the manner customary for payments in the required currency.\
+(iii) Each obligation of each party under Section 2(a)(i) is subject to (1) the condition precedent that no Event of Default or Potential Event of Default with respect to the other party has occurred and is continuing, (2) the condition precedent that no Early Termination Date in respect of the relevant Transaction has occurred or been effectively designated and (3) each other applicable condition precedent specified in this Agreement.\
+\
+Part 1: Termination Provisions.\
+(a) "Specified Entity" means Not applicable for all sections for both parties.\
+(b) "Specified Transaction" will have the meaning specified in Section 14 of this Agreement.\
+(c) Certain Events of Default: Section 5(a)(i) (Failure to Pay or Deliver) will apply to Party A and Party B. Other sections (Breach of Agreement, Credit Support Default, etc.) will not apply.\
+(d) Termination Events: Section 5(b)(i) (Illegality) and Section 5(b)(ii) (Tax Event) will apply to both parties.\
+(e) The "Automatic Early Termination" provision of Section 6(a) will not apply.\
+(f) Payments on Early Termination: Market Quotation and the Second Method will apply.\
+(g) "Termination Currency" means United States Dollars.\
+(h) Additional Termination Events apply to Party B, including failure to comply with Downgrade Provisions.\
+\
+Part 2: Tax Representations.\
+(a) Payer Representations: Both parties represent they are not required by law to make any deduction or withholding for Tax from any payment.\
+(b) Payee Representations: Party A represents it is a partnership complying with withholding obligations under Section 1446 of the Internal Revenue Code.\
+\
+Part 3: Agreement to Deliver Documents.\
+Documents to be delivered include board resolutions, incumbency certificates, and legal opinions upon execution of the agreement.\
+\
+Part 4: Miscellaneous.\
+(a) Addresses for Notices are specified for both parties.\
+(d) Calculation Agent is Party A.\
+(e) Credit Support Document for Party A is the Credit Support Annex; for Party B it is the PSA.\
+(g) Governing Law is the laws of the State of New York.\
+\
+Part 5: Other Provisions.\
+(a) Definitions: Capitalized terms not defined have meanings assigned in the PSA.\
+(b) Downgrade Provisions: Defines "Collateralization Event" and "Ratings Event" based on Moody's, S&P, and Fitch ratings, and outlines required actions like posting collateral or obtaining a substitute counterparty.\
+(c) Additional Representations: Includes "Eligible Contract Participant" and "Individual Negotiation".\
+(e) Transfer: Section 7 is amended to restrict assignment or transfer without prior written consent, with certain exceptions for Party A.\
+(f) Trustee Capacity: Clarifies the Trustee acts solely as trustee of the Trust and not in a personal capacity.\
+(p) Waiver of Jury Trial: Both parties waive the right to a trial by jury.\
+(q) Consent to Recording: Each party consents to the recording of telephone conversations of trading and marketing personnel.\
+`;\
+\
+\
+// --- Reusable Components (Leaf components defined first) ---\
+\
+const KpiCard = (\{ title, value, subValue, icon \}) => (\
+  <div className="bg-gray-800/50 p-5 rounded-xl shadow-lg border border-gray-700/50 flex items-center space-x-4">\
+    <div className="p-3 bg-gray-900/70 rounded-lg">\{icon\}</div>\
+    <div>\
+      <p className="text-sm text-gray-400">\{title\}</p>\
+      <p className="text-2xl font-bold text-white">\{value\}</p>\
+      <p className="text-xs text-gray-500">\{subValue\}</p>\
+    </div>\
+  </div>\
+);\
+\
+const RectangleStatCard = (\{ title, value, trend, trendDirection, icon \}) => (\
+  <div className="bg-gray-800/50 p-4 rounded-xl shadow-lg border border-gray-700/50 flex items-center justify-between">\
+    <div className="flex items-center">\
+      <div className="p-3 bg-gray-900/70 rounded-lg">\{icon\}</div>\
+      <div>\
+        <p className="text-sm text-gray-400 ml-4">\{title\}</p>\
+        <p className="text-xl font-bold text-white ml-4">\{value\}</p>\
+      </div>\
+    </div>\
+    \{trend && (\
+        <div className=\{`flex items-center text-xs font-semibold $\{trendDirection === 'up' ? 'text-green-400' : 'text-red-400'\}`\}>\
+            \{trendDirection === 'up' ? <ArrowUp size=\{14\} className="mr-1" /> : <ArrowDown size=\{14\} className="mr-1" />\}\
+            \{trend\}\
+        </div>\
+    )\}\
+  </div>\
+);\
+\
+\
+const BreakdownItem = (\{ label, value, isAlert = false \}) => (\
+  <div className=\{`p-3 rounded-lg $\{isAlert ? 'bg-red-900/30' : 'bg-gray-900/50'\}`\}>\
+    <p className=\{`text-sm $\{isAlert ? 'text-red-300' : 'text-gray-400'\}`\}>\{label\}</p>\
+    <p className="font-semibold text-lg text-white">\{value\}</p>\
+  </div>\
+);\
+\
+const InfoCard = (\{ title, value, valueClass = 'text-white' \}) => (\
+    <div className="bg-gray-900/50 p-4 rounded-lg">\
+        <p className="text-sm text-gray-400">\{title\}</p>\
+        <p className=\{`text-2xl font-bold $\{valueClass\}`\}>\{value\}</p>\
+    </div>\
+);\
+\
+const FailReasonItem = (\{ reason, count \}) => (\
+    <div className="flex justify-between items-center text-sm bg-gray-900/50 px-3 py-1.5 rounded">\
+        <p className="text-gray-300">\{reason\}</p>\
+        <p className="font-mono text-red-400 bg-red-900/30 px-2 rounded-sm">\{count\}</p>\
+    </div>\
+);\
+\
+const DownloadDropdown = (\{ onExport \}) => \{\
+    const [isOpen, setIsOpen] = useState(false);\
+    const dropdownRef = useRef(null);\
+    useEffect(() => \{\
+        const handleClickOutside = (event) => \{ if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false); \};\
+        document.addEventListener("mousedown", handleClickOutside);\
+        return () => document.removeEventListener("mousedown", handleClickOutside);\
+    \}, [dropdownRef]);\
+    const handleExport = (type) => \{ onExport(type); setIsOpen(false); \}\
+    return (\
+        <div className="relative" ref=\{dropdownRef\}>\
+            <button onClick=\{() => setIsOpen(!isOpen)\} className="flex items-center justify-center bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold px-3 py-1.5 text-xs rounded-lg transition-all duration-200">\
+                <FileDown size=\{14\} className="mr-2" /> Download <ChevronDown size=\{16\} className=\{`ml-1 transition-transform $\{isOpen ? 'rotate-180' : ''\}`\} />\
+            </button>\
+            \{isOpen && (\
+                <div className="absolute right-0 mt-2 w-32 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10">\
+                    <button onClick=\{() => handleExport('csv')\} className="w-full text-left block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">CSV</button>\
+                    <button onClick=\{() => handleExport('pdf')\} className="w-full text-left block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">PDF</button>\
+                </div>\
+            )\}\
+        </div>\
+    );\
+\};\
+\
+const InsightModal = (\{ isOpen, onClose, topic, data \}) => \{\
+    const [loading, setLoading] = useState(true);\
+    const [insight, setInsight] = useState(\{ target: '', reason: '', suggestion: '' \});\
+    useEffect(() => \{\
+        if (isOpen) \{\
+            setLoading(true);\
+            setTimeout(() => \{\
+                let newInsight = \{ target: '', reason: '', suggestion: '' \};\
+                switch (topic) \{\
+                    case 'Performance Metrics':\
+                        newInsight.target = 'Maintain daily average calls below 35.';\
+                        newInsight.reason = 'High averages can result from market volatility, new complex trades, or deteriorating credit quality of certain clients.';\
+                        newInsight.suggestion = '1. Identify clients with consistently high call frequencies for portfolio review.\\n2. Enhance pre-trade risk analysis to anticipate margin impacts.\\n3. Increase automation for standard call processing to free up operational capacity.';\
+                        break;\
+                    case 'Margin Call Breakdown':\
+                        newInsight.target = 'Achieve >85% Electronic (Automated) calls. Reduce Disputed calls to <5% of total.';\
+                        newInsight.reason = 'High manual calls suggest process gaps for certain products or agreements. Disputes often stem from valuation differences or data lags.';\
+                        newInsight.suggestion = '1. Analyze the top 5 reasons for manual calls and scope automation projects.\\n2. Implement a valuation tolerance threshold with key counterparties to pre-empt disputes.\\n3. Introduce a dashboard to track dispute resolution times and identify bottlenecks.';\
+                        break;\
+                \}\
+                setInsight(newInsight);\
+                setLoading(false);\
+            \}, 1500);\
+        \}\
+    \}, [isOpen, topic, data]);\
+    if (!isOpen) return null;\
+    return (\
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">\
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg p-6 m-4">\
+                <div className="flex justify-between items-center mb-4"> <h3 className="text-xl font-bold text-white flex items-center"> <Sparkles className="mr-3 text-blue-400" /> AI Insight: \{topic\} </h3> <button onClick=\{onClose\} className="text-gray-500 hover:text-white"><X size=\{24\} /></button> </div>\
+                \{loading ? ( <div className="text-center p-8"> <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto"></div> <p className="text-gray-400 mt-4">Analyzing data...</p> </div> ) : ( <div className="bg-gray-800/50 p-6 rounded-xl"> <div className="mb-4"> <h4 className="font-semibold text-blue-300 mb-2">Target</h4> <p className="text-gray-300">\{insight.target\}</p> </div> <div className="mb-4"> <h4 className="font-semibold text-blue-300 mb-2">Possible Reasons</h4> <p className="text-gray-300">\{insight.reason\}</p> </div> <div> <h4 className="font-semibold text-green-300 mb-2">Actionable Points</h4> <p className="text-gray-300 whitespace-pre-line">\{insight.suggestion\}</p> </div> </div> )\}\
+            </div>\
+        </div>\
+    );\
+\};\
+\
+const EligibilityAlertModal = (\{ isOpen, onClose \}) => \{\
+    if (!isOpen) return null;\
+    const alerts = [ \{ type: 'Currency', item: 'RUR', reason: 'New international sanctions imposed.', effectiveDate: '2025-07-05' \}, \{ type: 'Bond', item: 'Evergreen Corp Bonds', reason: 'Credit rating downgraded to non-investment grade.', effectiveDate: '2025-07-01' \}, ];\
+    return ( <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50"> <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg p-6 m-4"> <div className="flex justify-between items-center mb-4"> <h3 className="text-xl font-bold text-white flex items-center"> <AlertTriangle className="mr-3 text-red-400" /> Collateral Eligibility Alerts </h3> <button onClick=\{onClose\} className="text-gray-500 hover:text-white"><X size=\{24\} /></button> </div> <div className="bg-gray-800/50 p-6 rounded-xl space-y-4"> <p className="text-sm text-gray-400">Last updated: \{new Date().toLocaleDateString()\}</p> \{alerts.map((alert, index) => ( <div key=\{index\} className="border-l-4 border-red-500 pl-4 py-2 bg-red-900/20"> <p className="font-semibold text-red-300">Ineligible \{alert.type\}: \{alert.item\}</p> <p className="text-gray-300 text-sm">Reason: \{alert.reason\}</p> <p className="text-gray-400 text-xs">Effective Date: \{alert.effectiveDate\}</p> </div> ))\} </div> </div> </div> );\
+\};\
+\
+const AssetEligibilityModal = (\{ isOpen, onClose, assets, clientId \}) => \{\
+    if (!isOpen || !assets || assets.length === 0) return null;\
+    return (\
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">\
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg p-6 m-4">\
+                <div className="flex justify-between items-center mb-4">\
+                    <h3 className="text-xl font-bold text-white flex items-center">\
+                        <AlertCircle className="mr-3 text-yellow-400" /> Ineligible Asset Proposals\
+                    </h3>\
+                    <button onClick=\{onClose\} className="text-gray-500 hover:text-white"><X size=\{24\} /></button>\
+                </div>\
+                <div className="bg-gray-800/50 p-6 rounded-xl space-y-4">\
+                    <p className="text-sm text-gray-400">Client <span className="font-semibold text-white">\{clientId\}</span> has proposed the following assets which are currently ineligible:</p>\
+                    \{assets.map((asset, index) => (\
+                        <div key=\{index\} className="border-l-4 border-yellow-500 pl-4 py-2 bg-yellow-900/20">\
+                            <p className="font-semibold text-yellow-300">\{asset.name\}</p>\
+                            <p className="text-gray-300 text-sm">Reason: \{asset.reason\}</p>\
+                        </div>\
+                    ))\}\
+                </div>\
+            </div>\
+        </div>\
+    );\
+\};\
+\
+const EditableTag = (\{ text, onRemove \}) => (\
+    <span className="bg-gray-700 text-gray-300 text-xs font-medium mr-2 mb-2 px-2.5 py-1 rounded-full flex items-center">\
+        \{text\}\
+        <button onClick=\{onRemove\} className="ml-2 text-gray-400 hover:text-white focus:outline-none">\
+            <X size=\{12\} />\
+        </button>\
+    </span>\
+);\
+\
+const EditClientModal = (\{ isOpen, onClose, client, onSave \}) => \{\
+    const [editableClient, setEditableClient] = useState(null);\
+    const [newItem, setNewItem] = useState(\{ currencies: '', assets: '', holidays: '' \});\
+\
+    useEffect(() => \{\
+        if (client) \{\
+            setEditableClient(JSON.parse(JSON.stringify(client)));\
+        \} else \{\
+            setEditableClient(null);\
+        \}\
+    \}, [client]);\
+\
+    if (!isOpen || !editableClient) return null;\
+\
+    const handleChange = (e) => \{\
+        const \{ name, value \} = e.target;\
+        const numericFields = ['threshold'];\
+        if (numericFields.includes(name)) \{\
+            setEditableClient(prev => (\{ ...prev, [name]: parseInt(value.replace(/,/g, ''), 10) || 0 \}));\
+        \} else \{\
+            setEditableClient(prev => (\{ ...prev, [name]: value \}));\
+        \}\
+    \};\
+\
+    const handleMtaChange = (e) => \{\
+        const \{ name, value \} = e.target;\
+        const parsedValue = name === 'amount' ? parseInt(value.replace(/,/g, ''), 10) || 0 : value;\
+        setEditableClient(prev => (\{\
+            ...prev,\
+            mta: \{ ...prev.mta, [name]: parsedValue \}\
+        \}));\
+    \};\
+    \
+    const handleContactChange = (e) => \{\
+        const \{ name, value \} = e.target;\
+        setEditableClient(prev => (\{\
+            ...prev,\
+            contact: \{ ...prev.contact, [name]: value \}\
+        \}));\
+    \};\
+\
+    const handleNewItemChange = (e) => \{\
+        const \{ name, value \} = e.target;\
+        setNewItem(prev => (\{ ...prev, [name]: value \}));\
+    \};\
+\
+    const handleAddItem = (type) => \{\
+        const value = newItem[type].trim();\
+        if (value && !editableClient[type].includes(value)) \{\
+            setEditableClient(prev => (\{\
+                ...prev,\
+                [type]: [...prev[type], value]\
+            \}));\
+            setNewItem(prev => (\{ ...prev, [type]: '' \}));\
+        \}\
+    \};\
+\
+    const handleRemoveItem = (type, index) => \{\
+        setEditableClient(prev => (\{\
+            ...prev,\
+            [type]: prev[type].filter((_, i) => i !== index)\
+        \}));\
+    \};\
+\
+    const handleSave = () => \{\
+        onSave(editableClient);\
+        onClose();\
+    \};\
+\
+    const renderEditableList = (type, label) => (\
+        <div className="col-span-3">\
+            <label className="block mb-2 text-sm font-medium text-gray-300">\{label\}</label>\
+            <div className="flex flex-wrap gap-1 mb-2">\
+                \{editableClient[type].map((item, index) => (\
+                    <EditableTag key=\{index\} text=\{item\} onRemove=\{() => handleRemoveItem(type, index)\} />\
+                ))\}\
+            </div>\
+            <div className="flex gap-2">\
+                <input\
+                    type="text"\
+                    name=\{type\}\
+                    value=\{newItem[type]\}\
+                    onChange=\{handleNewItemChange\}\
+                    placeholder=\{`Add new $\{label.slice(0, -1).toLowerCase()\}...`\}\
+                    className="bg-gray-800 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"\
+                />\
+                <button onClick=\{() => handleAddItem(type)\} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-lg">Add</button>\
+            </div>\
+        </div>\
+    );\
+\
+    return (\
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">\
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-4xl">\
+                <div className="p-6 border-b border-gray-700">\
+                    <h3 className="text-xl font-bold text-white">Edit Arrangements for \{client.accountName\} (\{client.clientId\})</h3>\
+                </div>\
+                <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">\
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">\
+                        <FormInput name="accountName" label="Account Name" value=\{editableClient.accountName\} onChange=\{handleChange\} />\
+                        <FormInput name="accountNumber" label="Account Number" value=\{editableClient.accountNumber\} onChange=\{handleChange\} />\
+                        <FormInput name="lei" label="LEI" value=\{editableClient.lei\} onChange=\{handleChange\} />\
+\
+                        <FormInput name="domicile" label="Domicile" value=\{editableClient.domicile\} onChange=\{handleChange\} />\
+                        <FormInput name="principalEntity" label="Principal Entity" value=\{editableClient.principalEntity\} onChange=\{handleChange\} />\
+                        <FormInput name="reportingCurrency" label="Reporting Currency" value=\{editableClient.reportingCurrency\} onChange=\{handleChange\} />\
+                        \
+                        <div className="md:col-span-2">\
+                           <label className="block mb-2 text-sm font-medium text-gray-300">Minimum Transfer Amount (MTA)</label>\
+                           <div className="flex gap-2">\
+                               <input type="text" name="amount" value=\{formatNumber(editableClient.mta.amount)\} onChange=\{handleMtaChange\} className="bg-gray-800 border border-gray-600 text-white rounded-lg w-2/3 p-2.5"/>\
+                               <input type="text" name="currency" value=\{editableClient.mta.currency\} onChange=\{handleMtaChange\} className="bg-gray-800 border border-gray-600 text-white rounded-lg w-1/3 p-2.5" placeholder="e.g. USD"/>\
+                           </div>\
+                        </div>\
+                        <div>\
+                            <label htmlFor="threshold" className="block mb-2 text-sm font-medium text-gray-300">Threshold</label>\
+                            <input type="text" id="threshold" name="threshold" value=\{formatNumber(editableClient.threshold)\} onChange=\{handleChange\} className="bg-gray-800 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"/>\
+                        </div>\
+\
+                        <FormInput name="notificationTime" label="Notification Time" value=\{editableClient.notificationTime\} onChange=\{handleChange\} />\
+                        <FormInput name="phone" label="Contact Phone" value=\{editableClient.contact.phone\} onChange=\{handleContactChange\} />\
+                        <FormInput name="email" label="Contact Email" type="email" value=\{editableClient.contact.email\} onChange=\{handleContactChange\} />\
+\
+                        <div className="md:col-span-3">\
+                            <FormInput name="settlementPeriod" label="Settlement Period" value=\{editableClient.settlementPeriod\} onChange=\{handleChange\} />\
+                        </div>\
+                        \
+                        <div className="md:col-span-3">\{renderEditableList('assets', 'Eligible Collateral')\}</div>\
+                        <div className="md:col-span-3">\{renderEditableList('currencies', 'Currencies')\}</div>\
+                        <div className="md:col-span-3">\{renderEditableList('holidays', 'Holiday Calendars')\}</div>\
+                    </div>\
+                </div>\
+                <div className="p-6 bg-gray-800/50 border-t border-gray-700 flex justify-end gap-4">\
+                    <button onClick=\{onClose\} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>\
+                    <button onClick=\{handleSave\} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg">Save Changes</button>\
+                </div>\
+            </div>\
+        </div>\
+    );\
+\};\
+\
+const ViewAgreementModal = (\{ isOpen, onClose, client \}) => \{\
+    if (!isOpen || !client) return null;\
+\
+    const agreementTitle = "ISDA Master Agreement";\
+    const partyADetails = \{ name: "Barclays", address: "5 The North Colonnade", city: "Canary Wharf, London E14 4BB" \};\
+\
+    const AgreementSection = (\{ title, children \}) => (\
+        <div className="pt-4">\
+            <h5 className="font-semibold text-gray-200 text-base mb-2">\{title\}</h5>\
+            <div className="space-y-3 text-gray-400 leading-relaxed">\{children\}</div>\
+        </div>\
+    );\
+\
+    const handleDownloadPdf = () => \{\
+        const \{ jsPDF \} = window.jspdf;\
+        if (!jsPDF) \{\
+            alert("PDF generation library is not loaded yet.");\
+            return;\
+        \}\
+        const doc = new jsPDF();\
+        \
+        doc.setFontSize(16);\
+        doc.text("ISDA Master Agreement", 10, 20);\
+        \
+        doc.setFontSize(10);\
+        doc.text(`Dated as of: $\{formatDate(new Date())\}`, 10, 28);\
+        \
+        doc.text(`Party A: $\{partyADetails.name\}`, 10, 40);\
+        doc.text(`Party B: $\{client.accountName\} ($\{client.accountNumber\})`, 10, 45);\
+\
+        const splitText = doc.splitTextToSize(ISDA_AGREEMENT_TEXT, 180);\
+        doc.text(splitText, 10, 60);\
+        \
+        doc.save(`ISDA_Agreement_$\{client.clientId\}.pdf`);\
+    \};\
+\
+    return (\
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">\
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-4xl">\
+                <div className="p-6 border-b border-gray-700 flex justify-between items-center">\
+                    <div>\
+                        <h3 className="text-xl font-bold text-white">Agreement for \{client.accountName\}</h3>\
+                        <p className="text-gray-400 text-sm">Based on standard ISDA Master Agreement</p>\
+                    </div>\
+                    <div className="flex items-center gap-4">\
+                        <button onClick=\{handleDownloadPdf\} className="flex items-center justify-center bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold px-3 py-1.5 text-xs rounded-lg transition-all duration-200">\
+                            <FileDown size=\{14\} className="mr-2" /> Download as PDF\
+                        </button>\
+                        <button onClick=\{onClose\} className="text-gray-500 hover:text-white"><X size=\{24\} /></button>\
+                    </div>\
+                </div>\
+                <div className="bg-gray-800/50 p-6 rounded-b-2xl space-y-4 max-h-[70vh] overflow-y-auto text-gray-300 text-sm">\
+                    <h4 className="font-bold text-blue-300 text-lg">\{agreementTitle\}</h4>\
+                    <p className="text-gray-400">Dated as of \{formatDate(new Date())\}</p>\
+                    \
+                    <div className="grid grid-cols-2 gap-8 pt-4">\
+                        <div>\
+                            <p className="font-semibold text-gray-200">Party A:</p>\
+                            <p>\{partyADetails.name\}</p>\
+                            <p>\{partyADetails.address\}</p>\
+                            <p>\{partyADetails.city\}</p>\
+                        </div>\
+                         <div>\
+                            <p className="font-semibold text-gray-200">Party B:</p>\
+                            <p>\{client.accountName\}</p>\
+                            <p>Account: \{client.accountNumber\}</p>\
+                            <p>Domicile: \{client.domicile\}</p>\
+                        </div>\
+                    </div>\
+                    \
+                    <p className="pt-4 text-gray-400">The parties have entered and/or anticipate entering into one or more transactions (each a "Transaction") that are or will be governed by this Master Agreement...</p>\
+                    \
+                    <AgreementSection title="1. Interpretation">\
+                        <p><span className="font-semibold text-gray-200">1(a) Definitions.</span> The terms defined in Section 14 and in the Schedule will have the meanings therein specified for the purpose of this Master Agreement.</p>\
+                        <p><span className="font-semibold text-gray-200">1(b) Inconsistency.</span> In the event of any inconsistency between the provisions of the Schedule and the other provisions of this Master Agreement, the Schedule will prevail. In the event of any inconsistency between the provisions of any Confirmation and this Master Agreement (including the Schedule), such Confirmation will prevail for the purpose of the relevant Transaction.</p>\
+                        <p><span className="font-semibold text-gray-200">1(c) Single Agreement.</span> All Transactions are entered into in reliance on the fact that this Master Agreement and all Confirmations form a single agreement between the parties (collectively referred to as this "Agreement"), and the parties would not otherwise enter into any Transactions.</p>\
+                    </AgreementSection>\
+\
+                    <AgreementSection title="2. Obligations">\
+                        <p><span className="font-semibold text-gray-200">2(a) General Conditions.</span> (i) Each party will make each payment or delivery specified in each Confirmation to be made by it, subject to the other provisions of this Agreement. (ii) Payments under this Agreement will be made on the due date for value on that date in the place of the account specified in the relevant Confirmation or otherwise pursuant to this Agreement, in freely transferable funds and in the manner customary for payments in the required currency.</p>\
+                    </AgreementSection>\
+\
+                    <AgreementSection title="5. Events of Default and Termination Events">\
+                       <p><span className="font-semibold text-gray-200">5(a) Events of Default.</span> The occurrence at any time with respect to a party or, if applicable, any Credit Support Provider of such party of any of the following events constitutes an event of default: Failure to Pay or Deliver, Breach of Agreement, Credit Support Default, Misrepresentation, etc.</p>\
+                       <p><span className="font-semibold text-gray-200">5(b) Termination Events.</span> The occurrence at any time with respect to a party of any of the following events constitutes a Termination Event: Illegality, Tax Event, Tax Event Upon Merger, Credit Event Upon Merger.</p>\
+                    </AgreementSection>\
+                </div>\
+            </div>\
+        </div>\
+    );\
+\};\
+\
+const ViewAccountModal = (\{ isOpen, onClose, client \}) => \{\
+    if (!isOpen || !client) return null;\
+\
+    // Helper components defined inside for encapsulation\
+    const AccountInfoField = (\{ icon, label, value \}) => (\
+        <div className="bg-gray-800/60 p-4 rounded-lg">\
+            <div className="flex items-center text-gray-400 text-sm mb-1">\
+                \{icon\}\
+                <span className="ml-2">\{label\}</span>\
+            </div>\
+            <p className="text-white font-semibold text-base">\{value\}</p>\
+        </div>\
+    );\
+\
+    const InfoListSection = (\{ label, items \}) => (\
+        <div className="md:col-span-3 bg-gray-800/60 p-4 rounded-lg">\
+            <p className="text-gray-400 text-sm mb-2">\{label\}</p>\
+            <div className="flex flex-wrap gap-2">\
+                \{items && items.length > 0 ? (\
+                    items.map((item, index) => <Tag key=\{index\} text=\{item\} />)\
+                ) : (\
+                    <p className="text-gray-500 text-xs">None specified</p>\
+                )\}\
+            </div>\
+        </div>\
+    );\
+\
+    return (\
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">\
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-4xl">\
+                <div className="p-6 border-b border-gray-700 flex justify-between items-center">\
+                    <div>\
+                        <h3 className="text-xl font-bold text-white">Comprehensive Account View</h3>\
+                        <p className="text-gray-400">\{client.accountName\} (\{client.clientId\})</p>\
+                    </div>\
+                    <button onClick=\{onClose\} className="text-gray-500 hover:text-white"><X size=\{24\} /></button>\
+                </div>\
+                <div className="p-6 max-h-[70vh] overflow-y-auto">\
+                    <div className="space-y-6">\
+                        \{/* Section 1: Core Identifiers */\}\
+                        <div>\
+                             <h4 className="text-lg font-semibold text-blue-300 mb-3">Core Identifiers</h4>\
+                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">\
+                                <AccountInfoField icon=\{<Briefcase size=\{16\} />\} label="Account Name" value=\{client.accountName\} />\
+                                <AccountInfoField icon=\{<User size=\{16\} />\} label="Account Number" value=\{client.accountNumber\} />\
+                                <AccountInfoField icon=\{<Landmark size=\{16\} />\} label="Principal Entity" value=\{client.principalEntity\} />\
+                                <AccountInfoField icon=\{<FileCheck size=\{16\} />\} label="LEI" value=\{client.lei\} />\
+                                <AccountInfoField icon=\{<Globe size=\{16\} />\} label="Domicile" value=\{client.domicile\} />\
+                             </div>\
+                        </div>\
+\
+                        \{/* Section 2: Financial Parameters */\}\
+                        <div>\
+                             <h4 className="text-lg font-semibold text-blue-300 mb-3">Financial Parameters</h4>\
+                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">\
+                                <AccountInfoField \
+                                    icon=\{<Scale size=\{16\} />\} \
+                                    label="Threshold" \
+                                    value=\{formatCurrencyDetailed(client.threshold, client.reportingCurrency)\} \
+                                />\
+                                <AccountInfoField \
+                                    icon=\{<DollarSign size=\{16\} />\} \
+                                    label="Minimum Transfer Amount" \
+                                    value=\{client.mta ? `$\{formatNumber(client.mta.amount)\} $\{client.mta.currency\}` : 'N/A'\}\
+                                />\
+                                <AccountInfoField \
+                                    icon=\{<Coins size=\{16\} />\} \
+                                    label="Reporting Currency" \
+                                    value=\{client.reportingCurrency\} \
+                                />\
+                             </div>\
+                        </div>\
+\
+                        \{/* Section 3: Operational Details */\}\
+                        <div>\
+                             <h4 className="text-lg font-semibold text-blue-300 mb-3">Operational Details</h4>\
+                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">\
+                                <AccountInfoField \
+                                    icon=\{<Phone size=\{16\} />\} \
+                                    label="Contact Phone" \
+                                    value=\{client.contact?.phone || 'N/A'\} \
+                                />\
+                                <AccountInfoField \
+                                    icon=\{<MailIcon size=\{16\} />\} \
+                                    label="Contact Email" \
+                                    value=\{client.contact?.email || 'N/A'\} \
+                                />\
+                                <AccountInfoField \
+                                    icon=\{<Clock size=\{16\} />\} \
+                                    label="Notification Time" \
+                                    value=\{client.notificationTime\} \
+                                />\
+                                 <AccountInfoField \
+                                    icon=\{<Calendar size=\{16\} />\} \
+                                    label="Settlement Period" \
+                                    value=\{client.settlementPeriod\} \
+                                />\
+                             </div>\
+                        </div>\
+                        \
+                        \{/* Section 4: Arrangements */\}\
+                        <div>\
+                            <h4 className="text-lg font-semibold text-blue-300 mb-3">Arrangements</h4>\
+                            <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-3 gap-4">\
+                                <InfoListSection label="Eligible Collateral" items=\{client.assets\} />\
+                                <InfoListSection label="Accepted Currencies" items=\{client.currencies\} />\
+                                <InfoListSection label="Holiday Calendars" items=\{client.holidays\} />\
+                            </div>\
+                        </div>\
+                    </div>\
+                </div>\
+                <div className="p-4 bg-gray-800/50 border-t border-gray-700 flex justify-end">\
+                    <button onClick=\{onClose\} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Close</button>\
+                </div>\
+            </div>\
+        </div>\
+    );\
+\};\
+\
+// BUG FIX: Moved FormInput outside of CreateAccountModal to prevent re-definition on each render,\
+// which can cause inputs to lose focus. It now receives value and onChange as props.\
+const FormInput = (\{ name, label, placeholder, value, onChange, type = "text", required = true \}) => (\
+    <div>\
+        <label htmlFor=\{name\} className="block mb-2 text-sm font-medium text-gray-300">\{label\}</label>\
+        <input \
+            type=\{type\} \
+            id=\{name\} \
+            name=\{name\} \
+            value=\{value\} \
+            onChange=\{onChange\} \
+            placeholder=\{placeholder\} \
+            required=\{required\} \
+            className="bg-gray-800 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"\
+        />\
+    </div>\
+);\
+\
+const CreateAccountModal = (\{ isOpen, onClose, onCreate \}) => \{\
+    const initialFormState = \{\
+        accountName: '',\
+        accountNumber: '',\
+        domicile: '',\
+        lei: '',\
+        mtaAmount: '',\
+        mtaCurrency: '',\
+        assets: '',\
+        currencies: '',\
+        holidays: '',\
+        threshold: '',\
+        reportingCurrency: '',\
+        contactPhone: '',\
+        contactEmail: '',\
+        notificationTime: '',\
+        settlementPeriod: '',\
+        principalEntity: '',\
+    \};\
+    const [formData, setFormData] = useState(initialFormState);\
+\
+    if (!isOpen) return null;\
+\
+    const handleChange = (e) => \{\
+        const \{ name, value \} = e.target;\
+        setFormData(prev => (\{ ...prev, [name]: value \}));\
+    \};\
+\
+    const handleSubmit = (e) => \{\
+        e.preventDefault();\
+        const newClient = \{\
+            clientId: `CID$\{Math.floor(1000 + Math.random() * 9000)\}`,\
+            accountName: formData.accountName,\
+            accountNumber: formData.accountNumber,\
+            domicile: formData.domicile,\
+            lei: formData.lei,\
+            mta: \{\
+                amount: parseInt(formData.mtaAmount, 10) || 0,\
+                currency: formData.mtaCurrency.toUpperCase(),\
+            \},\
+            assets: formData.assets.split(',').map(s => s.trim()).filter(Boolean),\
+            currencies: formData.currencies.split(',').map(s => s.trim().toUpperCase()).filter(Boolean),\
+            holidays: formData.holidays.split(',').map(s => s.trim()).filter(Boolean),\
+            proposedAssets: [],\
+            threshold: parseInt(formData.threshold, 10) || 0,\
+            reportingCurrency: formData.reportingCurrency.toUpperCase(),\
+            contact: \{\
+                phone: formData.contactPhone,\
+                email: formData.contactEmail,\
+            \},\
+            notificationTime: formData.notificationTime,\
+            settlementPeriod: formData.settlementPeriod,\
+            principalEntity: formData.principalEntity,\
+        \};\
+        onCreate(newClient);\
+        onClose();\
+    \};\
+\
+    return (\
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">\
+            <form onSubmit=\{handleSubmit\} className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-4xl">\
+                <div className="p-6 border-b border-gray-700">\
+                    <h3 className="text-xl font-bold text-white">Create New Client Account</h3>\
+                </div>\
+                <div className="p-6 max-h-[70vh] overflow-y-auto">\
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-sm">\
+                        <FormInput name="accountName" label="Account Name" placeholder="e.g., Quantum Fund LP" value=\{formData.accountName\} onChange=\{handleChange\} />\
+                        <FormInput name="accountNumber" label="Account Number" placeholder="e.g., US-ACCT-1234" value=\{formData.accountNumber\} onChange=\{handleChange\} />\
+                        <FormInput name="lei" label="LEI" placeholder="Legal Entity Identifier" value=\{formData.lei\} onChange=\{handleChange\} />\
+                        <FormInput name="domicile" label="Domicile" placeholder="e.g., USA" value=\{formData.domicile\} onChange=\{handleChange\} />\
+                        <FormInput name="principalEntity" label="Principle Entity" placeholder="e.g., Barclays Bank PLC London" value=\{formData.principalEntity\} onChange=\{handleChange\} />\
+                        <FormInput name="reportingCurrency" label="Reporting Currency" placeholder="e.g., USD" value=\{formData.reportingCurrency\} onChange=\{handleChange\} />\
+                        <FormInput name="settlementPeriod" label="Settlement Period" placeholder="e.g., T+0 or T+1" value=\{formData.settlementPeriod\} onChange=\{handleChange\} />\
+                        \
+                        <div>\
+                            <label className="block mb-2 text-sm font-medium text-gray-300">Minimum Transfer Amount (MTA)</label>\
+                            <div className="flex gap-2">\
+                                <input type="number" name="mtaAmount" value=\{formData.mtaAmount\} onChange=\{handleChange\} placeholder="Amount" className="bg-gray-800 border border-gray-600 text-white rounded-lg w-2/3 p-2.5"/>\
+                                <input type="text" name="mtaCurrency" value=\{formData.mtaCurrency\} onChange=\{handleChange\} placeholder="USD" className="bg-gray-800 border border-gray-600 text-white rounded-lg w-1/3 p-2.5"/>\
+                            </div>\
+                        </div>\
+\
+                        <FormInput name="threshold" label="Threshold" placeholder="e.g., 1000000" type="number" value=\{formData.threshold\} onChange=\{handleChange\} />\
+                        <FormInput name="notificationTime" label="Notification Time" placeholder="e.g., 10:00 AM London" value=\{formData.notificationTime\} onChange=\{handleChange\} />\
+                        <FormInput name="contactPhone" label="Contact Phone" placeholder="+1-202-555-0149" value=\{formData.contactPhone\} onChange=\{handleChange\} />\
+                        <FormInput name="contactEmail" label="Contact Email" placeholder="ops@quantum.com" type="email" value=\{formData.contactEmail\} onChange=\{handleChange\} />\
+\
+                        <div className="lg:col-span-3">\
+                            <FormInput name="assets" label="Eligible Collateral" placeholder="Comma-separated, e.g., US Treasuries, UK Gilts" value=\{formData.assets\} onChange=\{handleChange\} />\
+                        </div>\
+                        <div className="lg:col-span-3">\
+                            <FormInput name="currencies" label="Acceptable Currencies" placeholder="Comma-separated, e.g., USD, EUR, GBP" value=\{formData.currencies\} onChange=\{handleChange\} />\
+                        </div>\
+                        <div className="lg:col-span-3">\
+                            <FormInput name="holidays" label="Holiday Calendars" placeholder="Comma-separated, e.g., US, UK, TARGET2" value=\{formData.holidays\} onChange=\{handleChange\} />\
+                        </div>\
+                    </div>\
+                </div>\
+                <div className="p-6 bg-gray-800/50 border-t border-gray-700 flex justify-end gap-4">\
+                    <button type="button" onClick=\{onClose\} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>\
+                    <button type="submit" className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg">Create Account</button>\
+                </div>\
+            </form>\
+        </div>\
+    );\
+\};\
+\
+\
+const SidebarButton = (\{ icon, label, active, onClick \}) => (\
+  <button onClick=\{onClick\} className=\{`flex items-center w-full text-left px-4 py-3 rounded-lg transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 $\{active ? 'bg-blue-600/20 text-blue-300 shadow-inner' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'\}`\}>\
+    \{icon\} <span className="ml-4 font-medium">\{label\}</span>\
+  </button>\
+);\
+\
+const ActionButton = (\{ text, primary = false, danger = false, icon = null, small = false, onClick = () => \{\} \}) => \{\
+    const baseClasses = 'transition-all duration-200 ease-in-out flex items-center justify-center rounded-lg font-semibold';\
+    const sizeClasses = small ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm';\
+    \
+    let colorClasses = 'bg-gray-700 hover:bg-gray-600 text-gray-300';\
+    if (primary) \{\
+        colorClasses = 'bg-blue-600 hover:bg-blue-500 text-white';\
+    \} else if (danger) \{\
+        colorClasses = 'bg-red-600 hover:bg-red-500 text-white';\
+    \}\
+\
+    return (\
+        <button onClick=\{onClick\} className=\{`$\{baseClasses\} $\{sizeClasses\} $\{colorClasses\}`\}>\
+            \{icon && <span className="mr-2">\{icon\}</span>\} \{text\}\
+        </button>\
+    );\
+\};\
+\
+const PlaceholderComponent = (\{ title \}) => (\
+    <div>\
+        <h2 className="text-3xl font-bold text-white mb-2">\{title\}</h2>\
+        <p className="text-gray-400">This section is under construction.</p>\
+        <div className="mt-8 bg-gray-800/50 p-12 rounded-xl shadow-lg border border-gray-700/50 flex items-center justify-center">\
+            <p className="text-gray-500">Content for \{title\} will appear here.</p>\
+        </div>\
+    </div>\
+);\
+\
+const InfoField = (\{ label, value, valueClass = 'text-gray-200' \}) => (\
+    <div>\
+        <p className="text-sm text-gray-400 mb-1">\{label\}</p>\
+        <p className=\{`font-medium $\{valueClass\}`\}>\{value\}</p>\
+    </div>\
+);\
+\
+const Tag = (\{ text \}) => (\
+    <span className="bg-gray-700 text-gray-300 text-xs font-medium mr-2 mb-2 px-2.5 py-1 rounded-full">\{text\}</span>\
+);\
+\
+\
+// --- components/Dashboard.js ---\
+const getISODate = (date) => date.toISOString().split('T')[0];\
+const DEFAULT_END_DATE = getISODate(fixedTodayForDashboard);\
+const defaultStartDateObj = new Date(fixedTodayForDashboard);\
+defaultStartDateObj.setDate(defaultStartDateObj.getDate() - 30);\
+const DEFAULT_START_DATE = getISODate(defaultStartDateObj);\
+\
+const CollateralDashboard = () => \{\
+  const [filters, setFilters] = useState(\{\
+      clientId: 'all',\
+      startDate: DEFAULT_START_DATE,\
+      endDate: DEFAULT_END_DATE\
+  \});\
+  const [displayData, setDisplayData] = useState(null);\
+  const [loading, setLoading] = useState(true);\
+  const [insightModal, setInsightModal] = useState(\{ isOpen: false, topic: '', data: null \});\
+  const [eligibilityModalOpen, setEligibilityModalOpen] = useState(false);\
+\
+  const handleFilterChange = (filterName, value) => \{\
+      setFilters(prev => (\{ ...prev, [filterName]: value \}));\
+  \};\
+\
+  const applyFilters = () => \{\
+    setLoading(true);\
+    setTimeout(() => \{\
+        const startDate = new Date(filters.startDate);\
+        const endDate = new Date(filters.endDate);\
+        endDate.setHours(23, 59, 59, 999);\
+        \
+        const dateDiff = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24));\
+\
+        const isDefaultView = filters.clientId === 'all' && filters.startDate === DEFAULT_START_DATE && filters.endDate === DEFAULT_END_DATE;\
+\
+        if (isDefaultView) \{\
+            const totalClients = 500;\
+            const dailyAvgCalls = 563;\
+            const processedCalls = dailyAvgCalls * 30; // Use a fixed 30 days for consistency\
+            const dailyAvgValue = 8000000;\
+            const totalValue = dailyAvgValue * 30;\
+            const settlementRate = 95.2;\
+            const collateralTotal = 8800000000;\
+            const cashTotal = collateralTotal * 0.6;\
+            const bondTotal = collateralTotal * 0.4;\
+\
+            // Generate a new set of calls based on these metrics\
+            const specialCaseCalls = Array.from(\{ length: processedCalls \}, (_, i) => \{\
+                const isSettled = Math.random() < (settlementRate / 100);\
+                const status = isSettled ? 'Settled' : (Math.random() > 0.5 ? 'Failed' : 'Disputed');\
+                const failReasons = ['Incorrect SSI', 'Insufficient Funds/Securities', 'Late Matching', 'Market Holiday', 'Other'];\
+                \
+                return \{\
+                    id: `MC-SPEC-$\{1000 + i\}`,\
+                    clientId: clientIds[Math.floor(Math.random() * clientIds.length)],\
+                    date: generateRandomDate(startDate, endDate),\
+                    value: totalValue / processedCalls, // Distribute value evenly\
+                    type: Math.random() > 0.2 ? 'Electronic' : 'Manual',\
+                    direction: Math.random() > 0.5 ? 'Barclays Call' : 'Client Call',\
+                    status: status,\
+                    assetType: Math.random() > 0.4 ? 'Cash' : 'Bond',\
+                    failReason: status === 'Failed' ? failReasons[Math.floor(Math.random() * failReasons.length)] : null,\
+                \};\
+            \});\
+\
+            const getBreakdown = (key) => specialCaseCalls.reduce((acc, call) => \{ acc[call[key]] = (acc[call[key]] || 0) + 1; return acc; \}, \{\});\
+            const failReasons = specialCaseCalls.filter(c => c.status === 'Failed').reduce((acc, call) => \{ acc[call.failReason] = (acc[call.failReason] || 0) + 1; return acc; \}, \{\});\
+            const cashFails = specialCaseCalls.filter(c => c.status === 'Failed' && c.assetType === 'Cash').length;\
+            const bondFails = specialCaseCalls.filter(c => c.status === 'Failed' && c.assetType === 'Bond').length;\
+            const barclaysDisputes = specialCaseCalls.filter(c => c.status === 'Disputed' && c.direction === 'Barclays Call').length;\
+            const clientDisputes = specialCaseCalls.filter(c => c.status === 'Disputed' && c.direction === 'Client Call').length;\
+\
+            setDisplayData(\{\
+                processedCalls,\
+                totalValue,\
+                settlementRate: settlementRate.toFixed(1),\
+                breakdowns: \{ \
+                    type: getBreakdown('type'), \
+                    direction: getBreakdown('direction'), \
+                    status: getBreakdown('status'), \
+                    failReasons, \
+                    cashFails, \
+                    bondFails,\
+                    barclaysDisputes,\
+                    clientDisputes,\
+                \},\
+                performance: \{ \
+                    dailyAvgCalls: dailyAvgCalls.toFixed(0), \
+                    dailyAvgValue, \
+                \},\
+                collateral: \{ \
+                    total: collateralTotal, \
+                    cash: cashTotal, \
+                    bonds: bondTotal, \
+                    cashBreakdown: \{ USD: cashTotal * 0.6, EUR: cashTotal * 0.25, GBP: cashTotal * 0.15 \}, \
+                    bondBreakdown: \{ 'Government Bonds': bondTotal * 0.65, 'Corporate Bonds': bondTotal * 0.25, 'Other Securities': bondTotal * 0.10 \}, \
+                \},\
+                newClients: Math.floor(processedCalls / 1000),\
+                totalClients,\
+            \});\
+\
+        \} else \{ // ORIGINAL LOGIC for filtered views\
+            const filteredCalls = allMarginCalls.filter(call => \{\
+                const callDate = new Date(call.date);\
+                const clientMatch = filters.clientId === 'all' || call.clientId === filters.clientId;\
+                const dateMatch = callDate >= startDate && callDate <= endDate;\
+                return clientMatch && dateMatch;\
+            \});\
+            const totalValue = filteredCalls.reduce((acc, call) => acc + call.value, 0);\
+            const settledCalls = filteredCalls.filter(c => c.status === 'Settled').length;\
+            const failedCalls = filteredCalls.filter(c => c.status === 'Failed').length;\
+            const settlementRate = (settledCalls + failedCalls) > 0 ? (settledCalls / (settledCalls + failedCalls) * 100) : 100;\
+            \
+            const getBreakdown = (key) => filteredCalls.reduce((acc, call) => \{ acc[call[key]] = (acc[call[key]] || 0) + 1; return acc; \}, \{\});\
+            \
+            const failReasons = filteredCalls.filter(c => c.status === 'Failed').reduce((acc, call) => \{ acc[call.failReason] = (acc[call.failReason] || 0) + 1; return acc; \}, \{\});\
+            const cashFails = filteredCalls.filter(c => c.status === 'Failed' && c.assetType === 'Cash').length;\
+            const bondFails = filteredCalls.filter(c => c.status === 'Failed' && c.assetType === 'Bond').length;\
+            const barclaysDisputes = filteredCalls.filter(c => c.status === 'Disputed' && c.direction === 'Barclays Call').length;\
+            const clientDisputes = filteredCalls.filter(c => c.status === 'Disputed' && c.direction === 'Client Call').length;\
+\
+            const effectiveDateDiff = Math.max(1, dateDiff);\
+            const dailyAvgCalls = filteredCalls.length / effectiveDateDiff;\
+            const dailyAvgValue = totalValue / effectiveDateDiff;\
+            const collateralTotal = totalValue * 25 * (filters.clientId === 'all' ? 1 : 0.1);\
+            const cashTotal = collateralTotal * 0.6;\
+            const bondTotal = collateralTotal * 0.4;\
+            const totalClientsOnboard = clientDetailsData.filter(c => c.accountNumber).length;\
+            \
+            setDisplayData(\{\
+                processedCalls: filteredCalls.length, totalValue, settlementRate: settlementRate.toFixed(1),\
+                breakdowns: \{ \
+                    type: getBreakdown('type'), \
+                    direction: getBreakdown('direction'), \
+                    status: getBreakdown('status'), \
+                    failReasons, \
+                    cashFails, \
+                    bondFails,\
+                    barclaysDisputes,\
+                    clientDisputes,\
+                \},\
+                performance: \{ dailyAvgCalls: dailyAvgCalls.toFixed(1), dailyAvgValue, \},\
+                collateral: \{ total: collateralTotal, cash: cashTotal, bonds: bondTotal, cashBreakdown: \{ USD: cashTotal * 0.6, EUR: cashTotal * 0.25, GBP: cashTotal * 0.15 \}, bondBreakdown: \{ 'Government Bonds': bondTotal * 0.65, 'Corporate Bonds': bondTotal * 0.25, 'Other Securities': bondTotal * 0.10 \}, \},\
+                newClients: filters.clientId === 'all' ? Math.floor(filteredCalls.length / 20) : 0,\
+                totalClients: totalClientsOnboard,\
+            \});\
+        \}\
+        setLoading(false);\
+    \}, 500);\
+  \};\
+\
+  useEffect(() => \{ applyFilters(); \}, []);\
+\
+  const handleOpenInsight = (topic, data) => \{\
+    setInsightModal(\{ isOpen: true, topic, data \});\
+  \};\
+\
+  const exportFailsToCsv = () => \{\
+    const headers = ['Call ID', 'Client ID', 'Date', 'Value', 'Type', 'Direction', 'Status', 'Asset Type', 'Fail Reason'];\
+    const failsData = allMarginCalls.filter(c => c.status === 'Failed');\
+    \
+    const csvRows = failsData.map(call => \{\
+        const row = [\
+            call.id,\
+            call.clientId,\
+            formatDate(call.date),\
+            call.value,\
+            call.type,\
+            call.direction,\
+            call.status,\
+            call.assetType,\
+            call.failReason || 'N/A'\
+        ];\
+        return row.join(',');\
+    \});\
+\
+    const csvString = [headers.join(','), ...csvRows].join('\\n');\
+    \
+    downloadFile(\{\
+        data: csvString,\
+        fileName: 'settlement_fails.csv',\
+        fileType: 'text/csv'\
+    \});\
+  \};\
+\
+  return (\
+    <div>\
+      <div className="flex justify-between items-center mb-6">\
+        <div> <h2 className="text-3xl font-bold text-white">Collateral Dashboard</h2> <p className="text-gray-400">High-level overview of collateral management activities.</p> </div>\
+      </div>\
+      \
+      <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 mb-8 flex items-center space-x-4">\
+        <div className="flex items-center space-x-2"> <User size=\{18\} className="text-gray-400" /> <select value=\{filters.clientId\} onChange=\{(e) => handleFilterChange('clientId', e.target.value)\} className="bg-gray-700 border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"> <option value="all">All Client IDs</option> \{clientIds.map(id => <option key=\{id\} value=\{id\}>\{id\}</option>)\} </select> </div>\
+        <div className="flex items-center space-x-2"> <Calendar size=\{18\} className="text-gray-400" /> <input type="date" value=\{filters.startDate\} onChange=\{(e) => handleFilterChange('startDate', e.target.value)\} className="bg-gray-700 border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2" /> <span className="text-gray-400">-</span> <input type="date" value=\{filters.endDate\} onChange=\{(e) => handleFilterChange('endDate', e.target.value)\} className="bg-gray-700 border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2" /> </div>\
+        <button onClick=\{applyFilters\} disabled=\{loading\} className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2.5 text-sm rounded-lg transition-all duration-200 disabled:bg-blue-800 disabled:cursor-not-allowed"> \{loading ? 'Loading...' : <><Filter size=\{16\} className="mr-2" /> Apply Filters</>\} </button>\
+      </div>\
+\
+      <div className=\{`transition-opacity duration-300 $\{loading ? 'opacity-50' : 'opacity-100'\}`\}>\
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">\
+            <KpiCard title="Margin Calls Processed" value=\{displayData ? formatNumber(displayData.processedCalls) : '...'\} subValue=\{displayData ? `$\{formatCurrencyForScorecard(displayData.totalValue)\} USD` : '...'\} icon=\{<TrendingUp className="text-green-400" />\} />\
+            <KpiCard title="Collateral Holding Value" value=\{displayData ? formatCurrencyForScorecard(displayData.collateral.total) : '...'\} subValue=\{`Cash/Bonds`\} icon=\{<Shield className="text-blue-400" />\} />\
+            <KpiCard title="New Clients Onboarded" value=\{displayData ? displayData.newClients : '...'\} subValue="In selected period" icon=\{<Users className="text-indigo-400" />\} />\
+            <KpiCard title="On-Time Settlement Rate" value=\{displayData ? `$\{displayData.settlementRate\}%` : '...'\} subValue="Target: >95%" icon=\{<CheckCircle className="text-green-400" />\} />\
+            <KpiCard title="Total Clients Onboard" value=\{displayData ? formatNumber(displayData.totalClients) : '...'\} subValue="All active clients" icon=\{<Briefcase className="text-purple-400" />\} />\
+        </div>\
+\
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">\
+            <RectangleStatCard\
+                title="Barclays Dispute"\
+                value=\{displayData ? formatNumber(displayData.breakdowns.barclaysDisputes) : '...'\}\
+                icon=\{<AlertTriangle size=\{24\} className="text-yellow-400" />\}\
+            />\
+            <RectangleStatCard\
+                title="Client Dispute"\
+                value=\{displayData ? formatNumber(displayData.breakdowns.clientDisputes) : '...'\}\
+                icon=\{<AlertTriangle size=\{24\} className="text-orange-400" />\}\
+            />\
+        </div>\
+\
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">\
+            <div className="bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-700/50">\
+                <div className="flex justify-between items-center mb-4">\
+                    <h3 className="text-lg font-semibold text-gray-300">Margin Call Breakdown</h3>\
+                    <button onClick=\{() => handleOpenInsight('Margin Call Breakdown', displayData?.breakdowns)\} className="text-blue-400 hover:text-blue-300 transition-colors"><Sparkles size=\{18\} /></button>\
+                </div>\
+                <div className="grid grid-cols-2 gap-4 text-sm">\
+                    <BreakdownItem label="Electronic (Automated)" value=\{displayData ? formatNumber(displayData.breakdowns.type?.Electronic) : '...'\} />\
+                    <BreakdownItem label="Manual" value=\{displayData ? formatNumber(displayData.breakdowns.type?.Manual) : '...'\} />\
+                    <BreakdownItem label="Barclays Calls" value=\{displayData ? formatNumber(displayData.breakdowns.direction['Barclays Call']) : '...'\} />\
+                    <BreakdownItem label="Client Calls" value=\{displayData ? formatNumber(displayData.breakdowns.direction['Client Call']) : '...'\} />\
+                    <BreakdownItem label="Disputed Calls" value=\{displayData ? formatNumber(displayData.breakdowns.status.Disputed) : '...'\} isAlert />\
+                </div>\
+            </div>\
+            <div className="bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-700/50">\
+                <div className="flex justify-between items-start">\
+                    <h3 className="text-lg font-semibold text-gray-300 mb-4">Collateral Holdings Breakdown</h3>\
+                    <div className="flex items-center space-x-4">\
+                        <DownloadDropdown onExport=\{type => downloadFile(\{data: '', fileName: `collateral_holdings.$\{type\}`, fileType: 'text/csv'\})\} />\
+                    </div>\
+                </div>\
+                <div className="grid grid-cols-2 gap-4 text-sm">\
+                    <div>\
+                        <p className="text-blue-300 font-semibold mb-2">Cash Holdings (\{displayData ? formatCurrency(displayData.collateral.cash) : '...'\})</p>\
+                        \{displayData && Object.entries(displayData.collateral.cashBreakdown).map(([k,v])=><BreakdownItem key=\{k\} label=\{k\} value=\{formatCurrency(v)\} />)\}\
+                    </div>\
+                    <div>\
+                        <p className="text-green-300 font-semibold mb-2">Bond Holdings (\{displayData ? formatCurrency(displayData.collateral.bonds) : '...'\})</p>\
+                        \{displayData && Object.entries(displayData.collateral.bondBreakdown).map(([k,v])=><BreakdownItem key=\{k\} label=\{k\} value=\{formatCurrency(v)\} />)\}\
+                    </div>\
+                </div>\
+            </div>\
+        </div>\
+        \
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">\
+         <div className="lg:col-span-2 bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-700/50">\
+            <div className="flex justify-between items-center mb-4">\
+                <h3 className="text-lg font-semibold text-gray-300">Performance Metrics</h3>\
+                <button onClick=\{() => handleOpenInsight('Performance Metrics', displayData?.performance)\} className="text-blue-400 hover:text-blue-300 transition-colors"><Sparkles size=\{18\} /></button>\
+            </div>\
+            <div className="space-y-4">\
+                <InfoCard title=\{`Daily Avg. Calls (Selected Period)`\} value=\{displayData ? displayData.performance.dailyAvgCalls : '...'\} />\
+                <InfoCard title=\{`Daily Avg. Value (Selected Period)`\} value=\{displayData ? formatCurrency(displayData.performance.dailyAvgValue) : '...'\} />\
+            </div>\
+         </div>\
+         <div className="lg:col-span-3 bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-700/50">\
+            <div className="flex justify-between items-start mb-4">\
+                <h3 className="text-lg font-semibold text-red-400">Settlement Fails Breakdown</h3>\
+                <ActionButton text="Review All Fails" icon=\{<FileDown size=\{16\}/>\} danger onClick=\{exportFailsToCsv\} />\
+            </div>\
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">\
+                <div className="space-y-4">\
+                    <InfoCard title="Total Fails" value=\{displayData ? formatNumber(displayData.breakdowns.status.Failed) : '...'\} valueClass="text-red-400"/>\
+                    <InfoCard title="Cash Fails" value=\{displayData ? formatNumber(displayData.breakdowns.cashFails) : '...'\} valueClass="text-red-400"/>\
+                    <InfoCard title="Bond Fails" value=\{displayData ? formatNumber(displayData.breakdowns.bondFails) : '...'\} valueClass="text-red-400"/>\
+                </div>\
+                <div>\
+                    <h4 className="font-semibold text-gray-300 mb-2">Top Fail Reasons</h4>\
+                    <div className="space-y-2">\
+                        \{displayData && Object.entries(displayData.breakdowns.failReasons).sort(([,a],[,b]) => b-a).map(([reason, count]) => (\
+                            <FailReasonItem key=\{reason\} reason=\{reason\} count=\{count\} />\
+                        ))\}\
+                    </div>\
+                </div>\
+            </div>\
+         </div>\
+       </div>\
+      </div>\
+      <InsightModal isOpen=\{insightModal.isOpen\} onClose=\{() => setInsightModal(\{ ...insightModal, isOpen: false \})\} topic=\{insightModal.topic\} data=\{insightModal.data\} />\
+      <EligibilityAlertModal isOpen=\{eligibilityModalOpen\} onClose=\{() => setEligibilityModalOpen(false)\} />\
+    </div>\
+  );\
+\};\
+\
+\
+// --- components/ClientInformation.js ---\
+const ClientActionsDropdown = (\{ client, onEdit, onViewAgreement, onViewAccount, onSendToChecker \}) => \{\
+    const [isOpen, setIsOpen] = useState(false);\
+    const dropdownRef = useRef(null);\
+\
+    useEffect(() => \{\
+        const handleClickOutside = (event) => \{\
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) \{\
+                setIsOpen(false);\
+            \}\
+        \};\
+        document.addEventListener("mousedown", handleClickOutside);\
+        return () => document.removeEventListener("mousedown", handleClickOutside);\
+    \}, [dropdownRef]);\
+\
+    return (\
+        <div className="relative" ref=\{dropdownRef\}>\
+            <button onClick=\{() => setIsOpen(!isOpen)\} className="text-gray-400 hover:text-white p-1 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500">\
+                <MoreHorizontal size=\{18\} />\
+            </button>\
+            \{isOpen && (\
+                <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10">\
+                    <button onClick=\{() => \{ onViewAccount(client); setIsOpen(false); \}\} className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">\
+                        <Briefcase size=\{14\} /> View Account\
+                    </button>\
+                    <button onClick=\{() => \{ onEdit(client); setIsOpen(false); \}\} className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">\
+                        <Edit size=\{14\} /> Edit Parameters\
+                    </button>\
+                    <button onClick=\{() => \{ onViewAgreement(client); setIsOpen(false); \}\} className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">\
+                        <FileCheck size=\{14\} /> View Agreement\
+                    </button>\
+                    <div className="border-t border-gray-700 my-1"></div>\
+                    <button onClick=\{() => \{ onSendToChecker(client); setIsOpen(false); \}\} className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">\
+                        <ArrowRight size=\{14\} /> Send to Checker\
+                    </button>\
+                </div>\
+            )\}\
+        </div>\
+    );\
+\};\
+\
+const ClientInformation = () => \{\
+    const [assetModalOpen, setAssetModalOpen] = useState(false);\
+    const [editModalOpen, setEditModalOpen] = useState(false);\
+    const [agreementModalOpen, setAgreementModalOpen] = useState(false);\
+    const [accountModalOpen, setAccountModalOpen] = useState(false);\
+    const [createModalOpen, setCreateModalOpen] = useState(false);\
+    const [clients, setClients] = useState(clientDetailsData.filter(c => c.accountNumber));\
+    const [activeClient, setActiveClient] = useState(clients[0]);\
+    const [confirmation, setConfirmation] = useState(\{ show: false, message: '' \});\
+    \
+    const initialFilters = \{\
+        searchQuery: "",\
+        domicile: 'all',\
+        currency: 'all',\
+    \};\
+    const [filters, setFilters] = useState(initialFilters);\
+\
+    const handleFilterChange = (e) => \{\
+        const \{ name, value \} = e.target;\
+        setFilters(prev => (\{ ...prev, [name]: value \}));\
+    \};\
+\
+    const uniqueDomiciles = useMemo(() => [...new Set(clients.map(c => c.domicile).filter(Boolean))], [clients]);\
+    const uniqueCurrencies = useMemo(() => [...new Set(clients.flatMap(c => c.currencies).filter(Boolean))], [clients]);\
+\
+    const filteredClients = useMemo(() => \{\
+        return clients.filter(client => \{\
+            const searchMatch = filters.searchQuery === "" || \
+                client.accountName?.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||\
+                client.accountNumber?.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||\
+                client.clientId?.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||\
+                client.lei?.toLowerCase().includes(filters.searchQuery.toLowerCase());\
+            const domicileMatch = filters.domicile === 'all' || client.domicile === filters.domicile;\
+            const currencyMatch = filters.currency === 'all' || (client.currencies && client.currencies.includes(filters.currency));\
+            \
+            return searchMatch && domicileMatch && currencyMatch;\
+        \});\
+    \}, [clients, filters]);\
+    \
+    const handleEditClick = (client) => \{\
+        setActiveClient(client);\
+        setEditModalOpen(true);\
+    \};\
+\
+    const handleViewAgreementClick = (client) => \{\
+        setActiveClient(client);\
+        setAgreementModalOpen(true);\
+    \};\
+\
+    const handleViewAccountClick = (client) => \{\
+        setActiveClient(client);\
+        setAccountModalOpen(true);\
+    \};\
+    \
+    const handleSendToChecker = (client) => \{\
+        setConfirmation(\{ show: true, message: `Account $\{client.accountName\} sent to checker.` \});\
+        setTimeout(() => \{\
+            setConfirmation(\{ show: false, message: '' \});\
+        \}, 3000);\
+    \};\
+\
+    const handleCreateClient = (newClient) => \{\
+        setClients(prevClients => [newClient, ...prevClients]);\
+        setConfirmation(\{ show: true, message: `Account $\{newClient.accountName\} created successfully.` \});\
+        setTimeout(() => \{\
+            setConfirmation(\{ show: false, message: '' \});\
+        \}, 3000);\
+    \};\
+\
+    const handleSaveClient = (updatedClient) => \{\
+        const newClients = clients.map(c => c.clientId === updatedClient.clientId ? updatedClient : c);\
+        setClients(newClients);\
+        if (activeClient && activeClient.clientId === updatedClient.clientId) \{\
+            setActiveClient(updatedClient);\
+        \}\
+    \};\
+    \
+    const handleExport = (type) => \{\
+        const data = filteredClients;\
+        if (type === 'csv') \{\
+            const headers = ['Client ID', 'Account Name', 'Account Number', 'LEI', 'Domicile', 'MTA', 'Eligible Collateral', 'Currencies', 'Holiday Calendar'];\
+            const csvData = data.map(client => [\
+                `"$\{client.clientId\}"`, `"$\{client.accountName\}"`, `"$\{client.accountNumber\}"`, `"$\{client.lei\}"`, `"$\{client.domicile\}"`, `"$\{client.mta.amount\} $\{client.mta.currency\}"`, `"$\{client.assets.join(', ')\}"`, `"$\{client.currencies.join(', ')\}"`, `"$\{client.holidays.join(', ')\}"`\
+            ].join(',')).join('\\n');\
+            downloadFile(\{ data: `$\{headers.join(',')\}\\n$\{csvData\}`, fileName: 'client_arrangements.csv', fileType: 'text/csv' \});\
+        \} else if (type === 'pdf') \{\
+            // PDF export logic remains the same\
+        \}\
+    \};\
+\
+    return (\
+        <div>\
+            <div className="flex justify-between items-center mb-4">\
+                <div>\
+                    <h2 className="text-3xl font-bold text-white">Client Module</h2>\
+                    <p className="text-gray-400 mt-1">Create, edit, and view client collateral arrangements.</p>\
+                </div>\
+                <div className="flex items-center gap-4">\
+                    <button onClick=\{() => setCreateModalOpen(true)\} className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white font-semibold px-3 py-1.5 text-xs rounded-lg transition-all duration-200">\
+                        <PlusCircle size=\{14\} className="mr-2" /> Create Account\
+                    </button>\
+                    <DownloadDropdown onExport=\{handleExport\} />\
+                </div>\
+            </div>\
+\
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 mb-8 flex flex-wrap items-center gap-4">\
+                <div className="relative flex-grow">\
+                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size=\{18\} className="text-gray-500" /></div>\
+                    <input type="text" name="searchQuery" placeholder="Search by name, ID, LEI..." value=\{filters.searchQuery\} onChange=\{handleFilterChange\} className="bg-gray-900/50 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5"/>\
+                </div>\
+                <div className="flex items-center gap-2">\
+                    <Globe size=\{18\} className="text-gray-400"/>\
+                    <select name="domicile" value=\{filters.domicile\} onChange=\{handleFilterChange\} className="bg-gray-700 border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">\
+                        <option value="all">All Domiciles</option>\
+                        \{uniqueDomiciles.map(d => <option key=\{d\} value=\{d\}>\{d\}</option>)\}\
+                    </select>\
+                </div>\
+                <div className="flex items-center gap-2">\
+                    <DollarSign size=\{18\} className="text-gray-400"/>\
+                     <select name="currency" value=\{filters.currency\} onChange=\{handleFilterChange\} className="bg-gray-700 border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">\
+                        <option value="all">All Currencies</option>\
+                        \{uniqueCurrencies.map(c => <option key=\{c\} value=\{c\}>\{c\}</option>)\}\
+                    </select>\
+                </div>\
+                <button onClick=\{() => setFilters(initialFilters)\} className="bg-gray-600 hover:bg-gray-500 text-white font-semibold px-4 py-2.5 text-sm rounded-lg">Reset</button>\
+            </div>\
+\
+            <div className="mt-8">\
+                <div className="bg-gray-800/50 rounded-xl shadow-lg border border-gray-700/50 overflow-hidden">\
+                    <div className="overflow-x-auto">\
+                        <table className="w-full text-left">\
+                            <thead className="text-xs text-gray-300 uppercase bg-gray-900/50">\
+                                <tr>\
+                                    <th scope="col" className="px-3 py-2">Account Name</th>\
+                                    <th scope="col" className="px-3 py-2">Principle Entity</th>\
+                                    <th scope="col" className="px-3 py-2">Account Number</th>\
+                                    <th scope="col" className="px-3 py-2">LEI</th>\
+                                    <th scope="col" className="px-3 py-2">MTA</th>\
+                                    <th scope="col" className="px-3 py-2">Eligible Collateral</th>\
+                                    <th scope="col" className="px-3 py-2 text-center">Actions</th>\
+                                </tr>\
+                            </thead>\
+                            <tbody className="text-xs">\
+                                \{filteredClients.map((client) => (\
+                                    <tr key=\{client.clientId\} className="border-b border-gray-700 hover:bg-gray-800/60">\
+                                        <td scope="row" className="px-3 py-2 font-medium text-white whitespace-nowrap">\{client.accountName\}</td>\
+                                        <td className="px-3 py-2">\{client.principalEntity\}</td>\
+                                        <td className="px-3 py-2 whitespace-nowrap font-mono">\{client.accountNumber\}</td>\
+                                        <td className="px-3 py-2 whitespace-nowrap font-mono">\{client.lei\}</td>\
+                                        <td className="px-3 py-2 whitespace-nowrap">\{client.mta ? `$\{formatNumber(client.mta.amount)\} $\{client.mta.currency\}` : 'N/A'\}</td>\
+                                        <td className="px-3 py-2">\{client.assets?.join(', ')\}</td>\
+                                        <td className="px-3 py-2 text-center">\
+                                            <ClientActionsDropdown\
+                                                client=\{client\}\
+                                                onEdit=\{handleEditClick\}\
+                                                onViewAgreement=\{handleViewAgreementClick\}\
+                                                onViewAccount=\{handleViewAccountClick\}\
+                                                onSendToChecker=\{handleSendToChecker\}\
+                                            />\
+                                        </td>\
+                                    </tr>\
+                                ))\}\
+                            </tbody>\
+                        </table>\
+                    </div>\
+                </div>\
+            </div>\
+            \
+            \{confirmation.show && (\
+                <div className="fixed bottom-5 right-5 bg-blue-500 text-white py-2 px-4 rounded-lg text-sm shadow-lg z-50 transition-opacity duration-300">\
+                    \{confirmation.message\}\
+                </div>\
+            )\}\
+\
+            <AssetEligibilityModal isOpen=\{assetModalOpen\} onClose=\{() => setAssetModalOpen(false)\} assets=\{activeClient?.proposedAssets\} clientId=\{activeClient?.clientId\} />\
+            <EditClientModal isOpen=\{editModalOpen\} onClose=\{() => setEditModalOpen(false)\} client=\{activeClient\} onSave=\{handleSaveClient\} />\
+            <ViewAgreementModal isOpen=\{agreementModalOpen\} onClose=\{() => setAgreementModalOpen(false)\} client=\{activeClient\} />\
+            <ViewAccountModal isOpen=\{accountModalOpen\} onClose=\{() => setAccountModalOpen(false)\} client=\{activeClient\} />\
+            <CreateAccountModal isOpen=\{createModalOpen\} onClose=\{() => setCreateModalOpen(false)\} onCreate=\{handleCreateClient\} />\
+        </div>\
+    );\
+\};\
+\
+// --- components/BookingWindowModal.js (UPDATED) ---\
+const BookingWindowModal = (\{ isOpen, onClose, call, onBook \}) => \{\
+    const [bookedAmount, setBookedAmount] = useState('');\
+    const [errorMessage, setErrorMessage] = useState('');\
+\
+    const clientQuotedAmount = useMemo(() => \{\
+        if (!call) return 0;\
+        // Simulate client quoting a different amount for some calls\
+        if (call.id === 'MC-9506') return 700000;\
+        if (call.id === 'MC-9509') return 0;\
+        if (call.id === 'MC-9513') return 390000;\
+        return call.callAmount; // Default to agreeing with the full amount\
+    \}, [call]);\
+    \
+    const emailBody = useMemo(() => \{\
+        if (!call) return '';\
+        const clientContact = clientDetailsData.find(c => c.clientId === call.clientId)?.contact?.email || 'operations@client.com';\
+        const isDiscrepancy = clientQuotedAmount !== call.callAmount;\
+        \
+        let body;\
+        if (isDiscrepancy) \{\
+            body = `We acknowledge receipt of the referenced margin call. However, we are showing a different MTM and will be paying the amount of **$\{formatCurrencyDetailed(clientQuotedAmount, call.currency)\}**.\\n\\nPlease see our attached MTM report for details. We can schedule a call to resolve the difference.\\n\\n`;\
+        \} else \{\
+            body = `We acknowledge receipt of the referenced margin call and agree with the calculated amount.\\n\\nWe will instruct payment for the full **$\{formatCurrencyDetailed(clientQuotedAmount, call.currency)\}** today. Value date will be $\{formatDate(new Date())\}.\\n\\n`;\
+        \}\
+\
+        return `**From:** $\{clientContact\}\\n**Subject:** Re: Margin Call $\{call.id\} - Our Ref: $\{call.clientId.substring(3)\}-XYZ\\n\\nHi Barclays Team,\\n\\n$\{body\}Regards,\\n$\{call.clientId\} Operations`;\
+    \}, [call, clientQuotedAmount]);\
+\
+\
+    useEffect(() => \{\
+        if (call) \{\
+            setBookedAmount(clientQuotedAmount.toString());\
+        \}\
+        setErrorMessage('');\
+    \}, [call, clientQuotedAmount]);\
+\
+    if (!isOpen || !call) return null;\
+\
+    const handleBook = () => \{\
+        const amount = parseFloat(bookedAmount);\
+        if (isNaN(amount) || amount < 0) \{\
+            setErrorMessage('Please enter a valid, non-negative amount.');\
+            return;\
+        \}\
+\
+        const difference = call.callAmount - amount;\
+        \
+        let bookingStatus;\
+        let disputeAmount;\
+        let disputeReason = null;\
+\
+        if (difference > 0.01) \{ // Allow for minor rounding\
+            bookingStatus = 'Partially Disputed';\
+            disputeAmount = difference;\
+            disputeReason = 'Partial booking based on client communication.';\
+        \} else \{\
+            bookingStatus = 'Fully Booked';\
+            disputeAmount = 0;\
+        \}\
+        \
+        onBook(\{\
+            callId: call.id,\
+            bookedAmount: amount,\
+            bookingStatus,\
+            disputeAmount,\
+            disputeReason,\
+        \});\
+        onClose();\
+    \};\
+\
+    const BookingScorecard = (\{ title, value, currency, className \}) => (\
+        <div className=\{`p-4 rounded-xl text-center $\{className\}`\}>\
+            <p className="text-sm text-gray-400 uppercase tracking-wider">\{title\}</p>\
+            <p className="text-3xl font-bold text-white mt-2">\{formatCurrencyDetailed(value, currency)\}</p>\
+        </div>\
+    );\
+\
+    return (\
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">\
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-4xl">\
+                <div className="p-6 border-b border-gray-700">\
+                    <h3 className="text-xl font-bold text-white">Manual Booking for \{call.clientId\} (\{call.id\})</h3>\
+                </div>\
+                <div className="p-6 grid grid-cols-1 md:grid-cols-5 gap-6 max-h-[75vh] overflow-y-auto">\
+                    \{/* Left side: Information */\}\
+                    <div className="md:col-span-3 space-y-6">\
+                        <div className="grid grid-cols-2 gap-4">\
+                            <BookingScorecard title="Required Margin" value=\{call.callAmount\} currency=\{call.currency\} className="bg-blue-900/40" />\
+                            <BookingScorecard title="Client Quoted" value=\{clientQuotedAmount\} currency=\{call.currency\} className="bg-purple-900/40" />\
+                        </div>\
+                        <div className="bg-gray-800/70 p-4 rounded-xl border border-gray-700/50">\
+                            <h4 className="font-semibold text-gray-300 mb-3 flex items-center"><Mail size=\{18\} className="mr-2" /> Client Communication</h4>\
+                            <div className="bg-gray-900/50 p-4 rounded-lg text-sm text-gray-400 space-y-2 whitespace-pre-wrap font-mono"\
+                                dangerouslySetInnerHTML=\{\{ __html: emailBody.replace(/\\*\\*(.*?)\\*\\*/g, '<strong class="text-white">$1</strong>') \}\}\
+                            >\
+                            </div>\
+                        </div>\
+                    </div>\
+                    \{/* Right side: Action */\}\
+                    <div className="md:col-span-2 bg-gray-800/50 p-6 rounded-xl border border-gray-700/50 flex flex-col justify-center">\
+                        <h4 className="font-semibold text-white text-lg mb-4">Enter Booking Amount</h4>\
+                        <p className="text-sm text-gray-400 mb-2">Enter the amount to book based on the client's agreement.</p>\
+                        <div className="relative">\
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">\{call.currency\}</span>\
+                            <input\
+                                type="number"\
+                                value=\{bookedAmount\}\
+                                onChange=\{(e) => setBookedAmount(e.target.value)\}\
+                                placeholder="0.00"\
+                                className="w-full bg-gray-900/50 border border-gray-600 text-white text-xl font-semibold rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-3 pl-14 text-right"\
+                            />\
+                        </div>\
+                        \{errorMessage && <p className="text-red-400 text-xs mt-2">\{errorMessage\}</p>\}\
+                        \
+                        <div className="mt-4 pt-4 border-t border-gray-700">\
+                             \{(parseFloat(bookedAmount) < call.callAmount) && (\
+                                <div className="p-3 mb-4 bg-yellow-900/30 border border-yellow-700/50 rounded-lg text-center">\
+                                    <p className="text-yellow-300 text-sm font-semibold">This will create a dispute of \{formatCurrencyDetailed(call.callAmount - (parseFloat(bookedAmount) || 0), call.currency)\}.</p>\
+                                </div>\
+                            )\}\
+                            <button \
+                                onClick=\{handleBook\}\
+                                className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200"\
+                            >\
+                                Book Margin\
+                            </button>\
+                        </div>\
+                    </div>\
+                </div>\
+                <div className="p-4 bg-gray-800/50 border-t border-gray-700 flex justify-end">\
+                    <button onClick=\{onClose\} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>\
+                </div>\
+            </div>\
+        </div>\
+    );\
+\};\
+\
+// --- components/MarginCallWorkflow.js ---\
+const marginCallData = [\
+    // Inbound\
+    \{ id: 'MC-9501', direction: 'inbound', clientId: 'CID5962', counterparty: 'Citibank', callAmount: 1200000, currency: 'USD', exposure: 15500000, bookingStatus: 'Fully Booked', disputeAmount: 0, priceMovement: 0.25, bookingType: 'Acadia-Electronic', portfolio: [\{ tradeId: 'FX0001', pnl: 5000, priceChange: 0.3 \}, \{ tradeId: 'FX0002', pnl: -2000, priceChange: -0.1 \}, \{ tradeId: 'IR0012', pnl: 15000, priceChange: 0.15 \}, \{ tradeId: 'EQ0034', pnl: -8000, priceChange: -0.05 \}] \},\
+    \{ id: 'MC-9502', direction: 'inbound', clientId: 'CID2693', counterparty: 'Goldman Sachs', callAmount: 850000, currency: 'GBP', exposure: 11000000, bookingStatus: 'Fully Booked', disputeAmount: 0, priceMovement: 0.15, bookingType: 'Acadia-Electronic', portfolio: [\{ tradeId: 'FX0003', pnl: 12000, priceChange: 0.2 \}, \{ tradeId: 'FX0004', pnl: -4500, priceChange: -0.05 \}, \{ tradeId: 'CD0008', pnl: 25000, priceChange: 0.35 \}, \{ tradeId: 'FI0019', pnl: -11000, priceChange: -0.12 \}] \},\
+    \{ id: 'MC-9503', direction: 'inbound', clientId: 'CID5299', counterparty: 'Morgan Stanley', callAmount: 2000000, currency: 'EUR', exposure: 25000000, bookingStatus: 'Fully Booked', disputeAmount: 0, priceMovement: 0.50, bookingType: 'Manual', portfolio: [\{ tradeId: 'FX00015', pnl: 35000, priceChange: 0.4 \}, \{ tradeId: 'FX00016', pnl: -10000, priceChange: -0.15 \}, \{ tradeId: 'COM001', pnl: 5000, priceChange: 0.05 \}] \},\
+    \{ id: 'MC-9504', direction: 'inbound', clientId: 'CID4233', counterparty: 'Citibank', callAmount: 500000, currency: 'USD', exposure: 8000000, bookingStatus: 'Fully Booked', disputeAmount: 0, priceMovement: -0.10, bookingType: 'Acadia-Electronic', portfolio: [\{ tradeId: 'FX00017', pnl: -5000, priceChange: -0.08 \}, \{ tradeId: 'FX0021', pnl: -2500, priceChange: -0.04 \}] \},\
+    \{ id: 'MC-9505', direction: 'inbound', clientId: 'CID7506', counterparty: 'Citibank', callAmount: 1500000, currency: 'USD', exposure: 22000000, bookingStatus: 'Fully Booked', disputeAmount: 0, priceMovement: 0.30, bookingType: 'Acadia-Electronic', portfolio: [\{ tradeId: 'FX00018', pnl: 22000, priceChange: 0.25 \}, \{ tradeId: 'IR0045', pnl: 12000, priceChange: 0.18 \}] \},\
+    \{ id: 'MC-9506', direction: 'inbound', clientId: 'CID1598', counterparty: 'Citibank', callAmount: 900000, currency: 'CAD', exposure: 12000000, bookingStatus: 'Partially Disputed', disputeAmount: 200000, priceMovement: -0.20, bookingType: 'Manual', disputeReason: 'MTM Mismatch', portfolio: [\{ tradeId: 'FX0005', pnl: -15000, priceChange: -0.5 \}, \{ tradeId: 'FX0006', pnl: 5000, priceChange: 0.1 \}, \{ tradeId: 'FX0025', pnl: -200000, priceChange: -1.5, dispute: true \}] \},\
+    \{ id: 'MC-9507', direction: 'inbound', clientId: 'CID8072', counterparty: 'Morgan Stanley', callAmount: 1100000, currency: 'AUD', exposure: 14000000, bookingStatus: 'Partially Disputed', disputeAmount: 300000, priceMovement: 0.45, bookingType: 'Acadia-Electronic', disputeReason: 'Trade Unmatched', portfolio: [\{ tradeId: 'FX0007', pnl: 25000, priceChange: 0.6 \}, \{ tradeId: 'FX0008', pnl: -8000, priceChange: -0.2 \}, \{ tradeId: 'UNMATCHED-01', pnl: 300000, priceChange: 0.9, dispute: true \}] \},\
+    \{ id: 'MC-9508', direction: 'inbound', clientId: 'CID7079', counterparty: 'JPMorgan', callAmount: 600000, currency: 'CHF', exposure: 9500000, bookingStatus: 'Partially Disputed', disputeAmount: 100000, priceMovement: 0.10, bookingType: 'Acadia-Electronic', disputeReason: 'Incorrect Collateral Calculation', portfolio: [\{ tradeId: 'FX0009', pnl: 12000, priceChange: 0.2 \}, \{ tradeId: 'CALC-ERR-01', pnl: 100000, priceChange: 0.5, dispute: true \}] \},\
+    \{ id: 'MC-9509', direction: 'inbound', clientId: 'CID8079', counterparty: 'JPMorgan', callAmount: 2500000, currency: 'GBP', exposure: 30000000, bookingStatus: 'Fully Disputed', disputeAmount: 2500000, priceMovement: 0.60, bookingType: 'Manual', disputeReason: 'MTM Mismatch', portfolio: [\{ tradeId: 'FX00010', pnl: -50000, priceChange: -1.2 \}, \{ tradeId: 'FX00011', pnl: -30000, priceChange: -0.8 \}, \{ tradeId: 'MTM-DISPUTE-01', pnl: 2500000, priceChange: 2.5, dispute: true \}] \},\
+    \{ id: 'MC-9510', direction: 'inbound', clientId: 'CID3450', counterparty: 'Citibank', callAmount: 1800000, currency: 'USD', exposure: 26000000, bookingStatus: 'Fully Disputed', disputeAmount: 1800000, priceMovement: 0.55, bookingType: 'Acadia-Electronic', disputeReason: 'Not Received in Account', portfolio: [\{ tradeId: 'FX00012', pnl: 40000, priceChange: 0.7 \}, \{ tradeId: 'SETTLE-FAIL-01', pnl: 1800000, priceChange: 1.8, dispute: true \}] \},\
+    // Outbound\
+    \{ id: 'MC-9511', direction: 'outbound', clientId: 'CID5962', counterparty: 'Goldman Sachs', callAmount: 700000, currency: 'USD', exposure: 9000000, bookingStatus: 'Fully Booked', disputeAmount: 0, priceMovement: -0.15, bookingType: 'Acadia-Electronic', portfolio: [\{ tradeId: 'FX00019', pnl: -7500, priceChange: -0.18 \}, \{ tradeId: 'IR0088', pnl: -12000, priceChange: -0.11 \}] \},\
+    \{ id: 'MC-9512', direction: 'outbound', clientId: 'CID2693', counterparty: 'JPMorgan', callAmount: 1300000, currency: 'GBP', exposure: 16000000, bookingStatus: 'Fully Booked', disputeAmount: 0, priceMovement: -0.35, bookingType: 'Acadia-Electronic', portfolio: [\{ tradeId: 'FX00020', pnl: -18000, priceChange: -0.4 \}, \{ tradeId: 'EQ0056', pnl: -25000, priceChange: -0.3 \}] \},\
+    \{ id: 'MC-9513', direction: 'outbound', clientId: 'CID5299', counterparty: 'Citibank', callAmount: 400000, currency: 'EUR', exposure: 6000000, bookingStatus: 'Fully Booked', disputeAmount: 0, priceMovement: -0.10, bookingType: 'Manual', portfolio: [\{ tradeId: 'FX00021', pnl: -3000, priceChange: -0.07 \}, \{ tradeId: 'FI0022', pnl: -9000, priceChange: -0.09 \}] \},\
+    \{ id: 'MC-9514', direction: 'outbound', clientId: 'CID4233', counterparty: 'Morgan Stanley', callAmount: 950000, currency: 'USD', exposure: 12500000, bookingStatus: 'Fully Booked', disputeAmount: 0, priceMovement: -0.25, bookingType: 'Acadia-Electronic', portfolio: [\{ tradeId: 'FX00022', pnl: -11000, priceChange: -0.28 \}, \{ tradeId: 'CD0015', pnl: -15000, priceChange: -0.21 \}] \},\
+    \{ id: 'MC-9515', direction: 'outbound', clientId: 'CID7506', counterparty: 'Goldman Sachs', callAmount: 1000000, currency: 'USD', exposure: 13000000, bookingStatus: 'Partially Disputed', disputeAmount: 100000, priceMovement: -0.30, bookingType: 'Acadia-Electronic', disputeReason: 'MTM Mismatch', portfolio: [\{ tradeId: 'FX00013', pnl: 8000, priceChange: 0.15 \}, \{ tradeId: 'FX00014', pnl: -12000, priceChange: -0.45 \}, \{ tradeId: 'MTM-DISPUTE-02', pnl: -100000, priceChange: -0.8, dispute: true \}] \},\
+];\
+\
+const ClientContextualSummary = (\{ clientId, clientSummaryData \}) => \{\
+    const clientData = clientSummaryData.find(c => c.clientId === clientId);\
+    if (!clientData) return null;\
+\
+    const getSettlementStatusClass = (status) => \{\
+        switch (status) \{\
+            case 'Settled': return 'text-green-300';\
+            case 'Partially Settled': return 'text-yellow-300';\
+            case 'In Progress': return 'text-blue-300';\
+            default: return 'text-gray-300';\
+        \}\
+    \};\
+    const getDisputeStatusClass = (status) => status === 'Yes' ? 'text-red-400' : 'text-green-400';\
+\
+    const disputeText = clientData.disputeStatus === 'Yes' \
+        ? `Yes ($\{formatCurrencyDetailed(clientData.disputedAmount, 'USD')\})` \
+        : 'No';\
+\
+    return (\
+        <div className="bg-gray-800/50 p-4 rounded-lg mt-4 border border-gray-700/60">\
+            <h4 className="text-sm font-semibold text-gray-400 mb-3">Client-wide Summary (Today)</h4>\
+            <div className="grid grid-cols-3 lg:grid-cols-6 gap-4 text-xs">\
+                <InfoField label="Total Exposure" value=\{formatCurrency(clientData.exposure)\} />\
+                <InfoField label="MTA" value=\{formatCurrencyDetailed(clientData.mta.amount, clientData.mta.currency)\} />\
+                <InfoField label="Agreed Amt" value=\{formatCurrency(clientData.agreedAmount)\} valueClass="text-green-300" />\
+                <InfoField label="Value Date" value=\{clientData.valueDate\} />\
+                <InfoField label="Disputed?" value=\{disputeText\} valueClass=\{getDisputeStatusClass(clientData.disputeStatus)\} />\
+                <InfoField label="Settlement" value=\{clientData.settlementStatus\} valueClass=\{getSettlementStatusClass(clientData.settlementStatus)\} />\
+            </div>\
+        </div>\
+    );\
+\};\
+\
+const MarginCallWorkflow = () => \{\
+    const [calls, setCalls] = useState(marginCallData);\
+    const [activeTab, setActiveTab] = useState('All');\
+    const [selectedCall, setSelectedCall] = useState(calls[0]);\
+    const [modals, setModals] = useState(\{recalculate: false, email: false, booking: false\});\
+    const [recalcStatus, setRecalcStatus] = useState('idle'); // idle, processing, done\
+    const [isPortfolioVisible, setIsPortfolioVisible] = useState(false);\
+    const [confirmation, setConfirmation] = useState(\{ show: false, message: '' \});\
+\
+    const clientSummaryData = useMemo(() => \{\
+        const uniqueClientIds = [...new Set(calls.map(call => call.clientId))];\
+        \
+        return uniqueClientIds.map(clientId => \{\
+            const clientCalls = calls.filter(call => call.clientId === clientId);\
+            const clientInfo = clientDetailsData.find(c => c.clientId === clientId) || \{ accountName: clientId, mta: \{ amount: 0, currency: 'USD' \} \};\
+\
+            const totalExposure = clientCalls.reduce((sum, call) => sum + call.exposure, 0);\
+            const totalCallAmount = clientCalls.reduce((sum, call) => sum + call.callAmount, 0);\
+            const totalDisputeAmount = clientCalls.reduce((sum, call) => sum + call.disputeAmount, 0);\
+\
+            const numCalls = clientCalls.length;\
+            const numSettled = clientCalls.filter(c => c.bookingStatus === 'Fully Booked').length;\
+\
+            let settlementStatus = 'In Progress';\
+            if (numSettled === numCalls) settlementStatus = 'Settled';\
+            else if (numSettled > 0) settlementStatus = 'Partially Settled';\
+\
+            return \{\
+                clientId: clientId,\
+                clientName: clientInfo.accountName,\
+                exposure: totalExposure,\
+                mta: clientInfo.mta,\
+                callAmount: totalCallAmount,\
+                agreedAmount: totalCallAmount - totalDisputeAmount,\
+                disputedAmount: totalDisputeAmount,\
+                disputeStatus: totalDisputeAmount > 0 ? 'Yes' : 'No',\
+                valueDate: formatDate(new Date()),\
+                settlementStatus: settlementStatus,\
+            \};\
+        \});\
+    \}, [calls]);\
+\
+\
+    const handleModalOpen = (modal) => setModals(prev => (\{...prev, [modal]: true\}));\
+    const handleModalClose = (modal) => setModals(prev => (\{...prev, [modal]: false\}));\
+\
+    const handleSelectCall = (call) => \{\
+        setSelectedCall(call);\
+        setIsPortfolioVisible(false); // Reset visibility when a new call is selected\
+    \};\
+\
+    const handleRecalculate = () => \{\
+        setRecalcStatus('processing');\
+        setTimeout(() => \{\
+            setRecalcStatus('done');\
+            setTimeout(() => \{\
+                handleModalClose('recalculate');\
+                setRecalcStatus('idle');\
+            \}, 1500);\
+        \}, 2000);\
+    \};\
+\
+    const handleBookMargin = (bookingDetails) => \{\
+        setCalls(prevCalls => prevCalls.map(call => \{\
+            if (call.id === bookingDetails.callId) \{\
+                return \{\
+                    ...call,\
+                    bookingStatus: bookingDetails.bookingStatus,\
+                    disputeAmount: bookingDetails.disputeAmount,\
+                    disputeReason: bookingDetails.disputeReason,\
+                \};\
+            \}\
+            return call;\
+        \}));\
+        setSelectedCall(prev => (\{\
+            ...prev,\
+            bookingStatus: bookingDetails.bookingStatus,\
+            disputeAmount: bookingDetails.disputeAmount,\
+            disputeReason: bookingDetails.disputeReason,\
+        \}));\
+        setConfirmation(\{ show: true, message: `Margin call $\{bookingDetails.callId\} booked and sent to checker.` \});\
+        setTimeout(() => setConfirmation(\{ show: false, message: '' \}), 3000);\
+    \};\
+\
+    const getFilteredCalls = () => \{\
+        if (activeTab === 'All') return calls;\
+        if (activeTab === 'Inbound') return calls.filter(c => c.direction === 'inbound');\
+        if (activeTab === 'Outbound') return calls.filter(c => c.direction === 'outbound');\
+        return calls;\
+    \};\
+\
+    const filteredCalls = getFilteredCalls();\
+\
+    const summary = useMemo(() => calls.reduce((acc, call) => \{\
+        acc.totalCalls += 1;\
+        acc.booked += call.callAmount - call.disputeAmount;\
+        acc.disputed += call.disputeAmount;\
+        if (call.direction === 'inbound') acc.inboundCount++;\
+        else acc.outboundCount++;\
+        return acc;\
+    \}, \{ totalCalls: 0, booked: 0, disputed: 0, inboundCount: 0, outboundCount: 0 \}), [calls]);\
+    \
+    const countByStatus = (status) => \{\
+        if (status === 'All') return summary.totalCalls;\
+        if (status === 'Inbound') return summary.inboundCount;\
+        if (status === 'Outbound') return summary.outboundCount;\
+        return calls.filter(item => item.bookingStatus === status).length;\
+    \}\
+\
+    const BookingStatusTag = (\{ status \}) => \{\
+        const statusStyles = \{\
+            'Fully Booked': 'bg-green-600/50 text-green-300',\
+            'Partially Disputed': 'bg-yellow-600/50 text-yellow-300',\
+            'Fully Disputed': 'bg-red-600/50 text-red-300',\
+        \};\
+        return <span className=\{`px-2 py-1 text-xs font-semibold rounded-full $\{statusStyles[status] || 'bg-gray-600'\}`\}>\{status\}</span>;\
+    \};\
+\
+    const CallListItem = (\{ call, onSelect, isSelected \}) => (\
+        <button onClick=\{() => onSelect(call)\} className=\{`w-full text-left p-4 border-b border-gray-700/50 hover:bg-gray-800 transition-colors duration-150 $\{isSelected ? 'bg-blue-900/30' : ''\}`\}>\
+            <div className="flex justify-between items-center mb-1">\
+                <p className="font-bold text-white">\{call.clientId\}</p>\
+                <BookingStatusTag status=\{call.bookingStatus\} />\
+            </div>\
+            <p className="text-xs text-gray-500 mb-2">vs \{call.counterparty\}</p>\
+            <div className="flex justify-start items-baseline text-sm">\
+                <p className="text-blue-400 font-semibold">\{call.currency\} \{formatNumber(call.callAmount)\}</p>\
+            </div>\
+        </button>\
+    );\
+    \
+    const InvestigationActions = () => (\
+        <div className="mt-6">\
+            <h4 className="text-lg font-semibold text-yellow-300 mb-3">Investigation Actions</h4>\
+            <div className="flex space-x-3">\
+                <button onClick=\{() => handleModalOpen('recalculate')\} className="flex-1 flex items-center justify-center bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold px-3 py-2 text-sm rounded-lg transition-all duration-200"><RefreshCw size=\{14\} className="mr-2"/>Recalculate</button>\
+                <button onClick=\{() => handleModalOpen('email')\} className="flex-1 flex items-center justify-center bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold px-3 py-2 text-sm rounded-lg transition-all duration-200"><Mail size=\{14\} className="mr-2"/>Email Client</button>\
+            </div>\
+        </div>\
+    );\
+\
+    const PortfolioTable = (\{ portfolio, currency, isDisputed \}) => \{\
+        const netPnl = portfolio.reduce((acc, trade) => acc + trade.pnl, 0);\
+        const payableBy = netPnl >= 0 ? 'Client' : 'Barclays';\
+\
+        return (\
+            <div>\
+                <div className="flex justify-between items-center mb-3">\
+                     <div/>\
+                     <p className="text-xs text-gray-500">\
+                        <span className="text-green-400">Green PnL:</span> Payable by Client | <span className="text-red-400">Red PnL:</span> Payable by Barclays\
+                    </p>\
+                </div>\
+                <div className=\{`bg-gray-800/50 rounded-lg overflow-hidden $\{isDisputed ? 'border-2 border-yellow-500/50' : ''\}`\}>\
+                    <table className="w-full text-left text-sm">\
+                        <thead className="bg-gray-900/50 text-xs text-gray-400 uppercase">\
+                            <tr>\
+                                <th className="p-3">Trade ID</th>\
+                                <th className="p-3 text-right">PnL</th>\
+                                <th className="p-3 text-right">Price Change</th>\
+                                <th className="p-3 text-right">Payable By</th>\
+                            </tr>\
+                        </thead>\
+                        <tbody>\
+                            \{portfolio.map(trade => (\
+                                <tr key=\{trade.tradeId\} className="border-b border-gray-700/50">\
+                                    <td className="p-3 font-mono">\{trade.tradeId\}</td>\
+                                    <td className=\{`p-3 text-right font-mono $\{trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'\}`\}>\{formatCurrencyDetailed(trade.pnl, currency)\}</td>\
+                                    <td className=\{`p-3 text-right font-mono $\{trade.priceChange >= 0 ? 'text-green-400' : 'text-red-400'\}`\}>\{trade.priceChange.toFixed(2)\}%</td>\
+                                    <td className=\{`p-3 text-right font-medium $\{trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'\}`\}>\
+                                        \{trade.pnl >= 0 ? 'Client' : 'Barclays'\}\
+                                    </td>\
+                                </tr>\
+                            ))\}\
+                        </tbody>\
+                        <tfoot className="bg-gray-900/70 font-bold">\
+                            <tr className="border-t-2 border-gray-600">\
+                                <td className="p-3 text-gray-300 text-right" colSpan="1">Net Difference:</td>\
+                                <td className=\{`p-3 text-right font-mono $\{netPnl >= 0 ? 'text-green-400' : 'text-red-400'\}`\}>\
+                                    \{formatCurrencyDetailed(netPnl, currency)\}\
+                                </td>\
+                                <td className="p-3 text-gray-300 text-right">Net Payable By:</td>\
+                                <td className=\{`p-3 text-right font-medium $\{netPnl >= 0 ? 'text-green-400' : 'text-red-400'\}`\}>\
+                                    \{payableBy\}\
+                                </td>\
+                            </tr>\
+                        </tfoot>\
+                    </table>\
+                </div>\
+            </div>\
+        );\
+    \};\
+\
+    const TABS = ['All', 'Inbound', 'Outbound'];\
+\
+    const TabButton = (\{ name, count, isActive, onClick \}) => (\
+         <button onClick=\{onClick\} className=\{`px-3 py-2 text-xs font-medium rounded-t-lg transition-all duration-200 border-b-2 whitespace-nowrap $\{isActive ? 'text-white border-blue-500' : 'text-gray-400 border-transparent hover:text-white hover:border-gray-500'\}`\}>\
+            \{name\} <span className=\{`ml-1.5 px-2 py-0.5 rounded-full text-xs $\{isActive ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-300'\}`\}>\{count\}</span>\
+        </button>\
+    );\
+    \
+    const DisputeInfo = (\{ reason \}) => (\
+        <div className="mt-4 p-4 bg-yellow-900/30 border-l-4 border-yellow-500 rounded-r-lg">\
+            <h4 className="font-semibold text-yellow-300 flex items-center"><AlertTriangle size=\{16\} className="mr-2"/>Dispute Reason</h4>\
+            <p className="text-sm text-yellow-200 mt-1">\{reason\}</p>\
+        </div>\
+    );\
+\
+    return (\
+        <div>\
+            <h2 className="text-3xl font-bold text-white mb-2">Workflow Management</h2>\
+            <p className="text-gray-400 mb-6">Live margin call activity for \{formatDate(new Date())\}.</p>\
+\
+            <div className="flex items-start">\
+                <div className="w-1/3 bg-gray-800/50 rounded-l-xl border border-r-0 border-gray-700/50 flex flex-col h-[80vh]">\
+                    <div className="border-b border-gray-700/50 flex flex-wrap justify-start p-1">\
+                        \{TABS.map(tab => <TabButton key=\{tab\} name=\{tab === 'All' ? `Margin Calls` : tab\} count=\{countByStatus(tab)\} isActive=\{activeTab === tab\} onClick=\{() => setActiveTab(tab)\} />)\}\
+                    </div>\
+                    <div className="flex-grow overflow-y-auto">\
+                        \{filteredCalls.map(call => <CallListItem key=\{call.id\} call=\{call\} onSelect=\{handleSelectCall\} isSelected=\{selectedCall?.id === call.id\} />)\}\
+                    </div>\
+                </div>\
+\
+                <div className="w-2/3 bg-gray-900/30 rounded-r-xl border border-gray-700/50 flex flex-col h-[80vh]">\
+                    \{selectedCall ? (\
+                        <>\
+                            <div className="p-6 border-b border-gray-700/50">\
+                                <div className="flex justify-between items-start">\
+                                    <div className="flex items-center gap-4">\
+                                        <div>\
+                                            <h3 className="text-2xl font-bold text-white">\{selectedCall.clientId\}</h3>\
+                                            <p className="text-gray-400 font-mono">\{selectedCall.id\}</p>\
+                                        </div>\
+                                        \{selectedCall.bookingType === 'Manual' && (\
+                                            <div className="flex items-center gap-2">\
+                                                <button onClick=\{() => handleModalOpen('booking')\} className="flex items-center gap-2 bg-orange-600/20 text-orange-300 font-semibold px-3 py-1.5 text-xs rounded-lg border border-orange-500/50 hover:bg-orange-600/40 transition-colors">\
+                                                    <Clock size=\{14\} />\
+                                                    Booking Window\
+                                                </button>\
+                                            </div>\
+                                        )\}\
+                                    </div>\
+                                    <BookingStatusTag status=\{selectedCall.bookingStatus\} />\
+                                </div>\
+                                <ClientContextualSummary clientId=\{selectedCall.clientId\} clientSummaryData=\{clientSummaryData\} />\
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm mt-4">\
+                                    <InfoField label="Counterparty" value=\{selectedCall.counterparty\} />\
+                                    <InfoField label="Booking" value=\{selectedCall.bookingType\} />\
+                                    <InfoField label="Total Exposure" value=\{`$\{selectedCall.currency\} $\{formatNumber(selectedCall.exposure)\}`\} />\
+                                    <InfoField label="Call Amount" value=\{`$\{selectedCall.currency\} $\{formatNumber(selectedCall.callAmount)\}`\} valueClass="text-blue-300" />\
+                                    \{selectedCall.disputeAmount > 0 && (\
+                                        <>\
+                                            <InfoField label="Disputed Amount" value=\{`$\{selectedCall.currency\} $\{formatNumber(selectedCall.disputeAmount)\}`\} valueClass="text-red-400" />\
+                                            <InfoField label="Agreed Amount" value=\{`$\{selectedCall.currency\} $\{formatNumber(selectedCall.callAmount - selectedCall.disputeAmount)\}`\} valueClass="text-green-400" />\
+                                        </>\
+                                    )\}\
+                                </div>\
+                                \{selectedCall.disputeReason && <DisputeInfo reason=\{selectedCall.disputeReason\} />\}\
+                            </div>\
+                            <div className="p-6 overflow-y-auto">\
+                                \{selectedCall.disputeAmount > 0 && <InvestigationActions />\}\
+                                \{selectedCall.portfolio && selectedCall.portfolio.length > 0 ? (\
+                                    <div className="mt-6">\
+                                        <button\
+                                            onClick=\{() => setIsPortfolioVisible(!isPortfolioVisible)\}\
+                                            className="w-full flex justify-between items-center p-3 bg-gray-800 hover:bg-gray-700 rounded-lg text-left text-lg font-semibold text-gray-300 transition-colors"\
+                                        >\
+                                            <span>Portfolio Details</span>\
+                                            <ChevronDown size=\{20\} className=\{`transition-transform duration-200 $\{isPortfolioVisible ? 'rotate-180' : ''\}`\} />\
+                                        </button>\
+                                        \{isPortfolioVisible && (\
+                                            <div className="mt-2 p-4 bg-gray-800/30 rounded-b-lg">\
+                                                <PortfolioTable portfolio=\{selectedCall.portfolio\} currency=\{selectedCall.currency\} isDisputed=\{selectedCall.disputeAmount > 0\} />\
+                                            </div>\
+                                        )\}\
+                                    </div>\
+                                ) : (\
+                                    <div className="text-center text-gray-500 pt-10">No portfolio details available for this margin call.</div>\
+                                )\}\
+                            </div>\
+                        </>\
+                    ) : (\
+                         <div className="flex items-center justify-center h-full"><p className="text-gray-500">Select a margin call to view details</p></div>\
+                    )\}\
+                </div>\
+            </div>\
+            \
+            \{/* Modals */\}\
+            <BookingWindowModal isOpen=\{modals.booking\} onClose=\{() => handleModalClose('booking')\} call=\{selectedCall\} onBook=\{handleBookMargin\} />\
+            \{confirmation.show && (\
+                <div className="fixed bottom-5 right-5 bg-blue-500 text-white py-2 px-4 rounded-lg text-sm shadow-lg z-50 transition-opacity duration-300">\
+                    \{confirmation.message\}\
+                </div>\
+            )\}\
+            \{modals.recalculate && (\
+                <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">\
+                    <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-sm p-8 m-4 text-center">\
+                        \{recalcStatus === 'idle' && <button onClick=\{handleRecalculate\} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-lg">Start Recalculation</button>\}\
+                        \{recalcStatus === 'processing' && <><Loader2 className="h-12 w-12 text-blue-400 animate-spin mx-auto mb-4" /><p className="text-white">Recalculating exposure...</p></>\}\
+                        \{recalcStatus === 'done' && <><CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" /><p className="text-white">Recalculation complete. Values updated.</p></>\}\
+                    </div>\
+                </div>\
+            )\}\
+            \{modals.email && (\
+                 <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">\
+                    <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg p-6 m-4">\
+                        <h3 className="text-xl font-bold text-white mb-4">Email Client Regarding Dispute</h3>\
+                        <div className="space-y-4 text-sm">\
+                            <input type="text" readOnly value=\{`$\{selectedCall.clientId.toLowerCase()\}@example.com`\} className="w-full bg-gray-800 border-gray-700 rounded-lg p-2 text-gray-400" />\
+                            <input type="text" readOnly value=\{`Dispute on Margin Call $\{selectedCall.id\}`\} className="w-full bg-gray-800 border-gray-700 rounded-lg p-2 text-gray-400" />\
+                            <textarea readOnly rows="6" className="w-full bg-gray-800 border-gray-700 rounded-lg p-2 text-gray-400">\
+                                \{`Dear $\{selectedCall.clientId\} team,\\n\\nWe are writing to you regarding a dispute on margin call $\{selectedCall.id\} for the amount of $\{selectedCall.currency\} $\{formatNumber(selectedCall.disputeAmount)\}.\\n\\nThe reason for the dispute is: $\{selectedCall.disputeReason\}.\\n\\nPlease review the attached trade details and contact us to resolve this matter.\\n\\nRegards,\\nBarclays Collateral Management`\}\
+                            </textarea>\
+                        </div>\
+                        <div className="flex justify-end gap-4 mt-6">\
+                            <button onClick=\{() => handleModalClose('email')\} className="bg-gray-600 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>\
+                            <button onClick=\{() => handleModalClose('email')\} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-lg flex items-center"><Send size=\{16\} className="mr-2"/>Send Email</button>\
+                        </div>\
+                    </div>\
+                </div>\
+            )\}\
+        </div>\
+    );\
+\};\
+\
+// --- components/DailyActivityLog.js ---\
+const DailyActivityLog = () => \{\
+    const getISODateString = (date) => \{\
+        const d = new Date(date);\
+        d.setUTCHours(0,0,0,0);\
+        return d.toISOString().split('T')[0];\
+    \};\
+    \
+    const [activeRowId, setActiveRowId] = useState(null);\
+    const [isModalOpen, setIsModalOpen] = useState(false);\
+    const [emailContent, setEmailContent] = useState('');\
+    const [isSending, setIsSending] = useState(false);\
+    const [showConfirmation, setShowConfirmation] = useState(false);\
+    const [selectedCall, setSelectedCall] = useState(null);\
+    const [selectedDate, setSelectedDate] = useState(getISODateString(new Date()));\
+    const [filters, setFilters] = useState(\{ searchQuery: "", status: "all", direction: "all" \});\
+    \
+    const formatMarginInMillions = (value) => \{\
+        if (!value && value !== 0) return '$0.00M';\
+        const millions = value / 1000000;\
+        return `$$\{millions.toFixed(2)\}M`;\
+    \};\
+\
+    const \{ currentDayStats, previousDayStats, displayData, uniqueStatuses \} = useMemo(() => \{\
+        const realTodayForCalc = new Date();\
+        realTodayForCalc.setHours(0, 0, 0, 0);\
+\
+        const baseData = [\
+            \{ id: 'TDR446', client: 'Citibank', currency: 'USD', dir: 'Receivable', acct: 'CITI-US-3456' \},\
+            \{ id: 'TDR983', client: 'Goldman Sachs', currency: 'USD', dir: 'Receivable', acct: 'GS-NY-9876' \},\
+            \{ id: 'TDR347', client: 'Morgan Stanley', currency: 'EUR', dir: 'Receivable', acct: 'MS-LN-1122' \},\
+            \{ id: 'TDR264', client: 'Citibank', currency: 'USD', dir: 'Payable', acct: 'BARC-LN-PAY-01' \},\
+            \{ id: 'TDR180', client: 'Citibank', currency: 'USD', dir: 'Receivable', acct: 'CITI-US-3456' \},\
+            \{ id: 'TDR604', client: 'Citibank', currency: 'GBP', dir: 'Payable', acct: 'BARC-LN-PAY-01' \},\
+            \{ id: 'TDR994', client: 'Morgan Stanley', currency: 'EUR', dir: 'Receivable', acct: 'MS-LN-1122' \},\
+            \{ id: 'TDR997', client: 'JPMorgan', currency: 'USD', dir: 'Receivable', acct: 'JPM-NY-5566' \},\
+        ];\
+\
+        const generateDailyData = (dateStr, daysAgo) => \{\
+             if (daysAgo < 0) return []; // Don't generate data for future dates\
+            const data = baseData.map((item, index) => \{\
+                const seed = (item.id.charCodeAt(5) + new Date(dateStr).getUTCDate() + index) % 10;\
+                let status, pmtStatus, notes, req;\
+                \
+                req = 3000000 + (seed * 100000) + (item.id.charCodeAt(4) * 1000) - (daysAgo * 50000);\
+                if (req < 500000) req = 500000 + (seed * 100000);\
+\
+                if (daysAgo === 0) \{ // Today\
+                    if (seed < 3) \{ status = 'Pending'; pmtStatus = 'Awaited client responses'; notes = 'Call issued. Awaiting client acknowledgement.'; \}\
+                    else if (seed < 6) \{ status = 'Agreed'; pmtStatus = 'Payment in progress'; notes = 'Client agreed. Payment is being processed.'; \}\
+                    else if (seed < 8) \{ status = 'Settled'; pmtStatus = 'Money Received'; notes = 'Collateral received and booked.'; \}\
+                    else \{ status = 'Disputed'; pmtStatus = 'Dispute Investigation'; notes = 'Client disputing MTM valuation. Under review.'; \}\
+                \} else \{ // Past days\
+                    if (seed < 2) \{ status = 'Pending'; pmtStatus = 'Awaited client responses'; notes = 'Call issued late yesterday, pending acknowledgement.'; \}\
+                    else if (seed < 4) \{ status = 'Agreed'; pmtStatus = 'Payment in queue'; notes = 'Client agreed late yesterday.'; \}\
+                    else if (seed < 6) \{ status = 'Disputed'; pmtStatus = 'Awaiting resolution'; notes = 'Dispute raised by client yesterday.'; \}\
+                    else \{ status = 'Settled'; pmtStatus = 'Money Received/Sent'; notes = 'Collateral settled on T+0.'; \}\
+                \}\
+                \
+                const history = [];\
+                const d = new Date(dateStr);\
+                if (daysAgo <= 2) \{\
+                    const dMinus2 = new Date(d);\
+                    dMinus2.setUTCDate(d.getUTCDate() - 2);\
+                    history.push(\{ date: getISODateString(dMinus2), status: 'Settled (T+0, 10:15 GMT)'\});\
+                \}\
+                if (daysAgo <= 1) \{\
+                    const dMinus1 = new Date(d);\
+                    dMinus1.setUTCDate(d.getUTCDate() - 1);\
+                    history.push(\{ date: getISODateString(dMinus1), status: 'Agreed (11:00 GMT)'\});\
+                \}\
+\
+                return \{ ...item, id: `$\{item.id.split('-')[0]\}-$\{daysAgo\}`, req, status, pmtStatus, notes, history \};\
+            \});\
+            \
+            // Ensure at least one call is settled for the current day's view\
+            const hasSettled = data.some(call => call.status === 'Settled');\
+            if (!hasSettled && data.length > 0) \{\
+                data[0].status = 'Settled';\
+                data[0].pmtStatus = 'Money Received';\
+                data[0].notes = 'Collateral received and booked.';\
+            \}\
+            return data;\
+        \};\
+\
+        const calculateStats = (data) => \{\
+            if (!data || data.length === 0) return \{ callsIssued: 0, marginRequired: 0, disputedCalls: 0, callsSettled: 0 \};\
+            const marginRequired = data.reduce((sum, call) => \{\
+                if (call.currency === 'EUR') return sum + call.req * 1.08;\
+                if (call.currency === 'GBP') return sum + call.req * 1.25;\
+                return sum + call.req;\
+            \}, 0);\
+            return \{\
+                callsIssued: data.length,\
+                marginRequired,\
+                disputedCalls: data.filter(call => call.status === 'Disputed').length,\
+                callsSettled: data.filter(call => call.status === 'Settled').length,\
+            \};\
+        \};\
+\
+        const currentDateObj = new Date(selectedDate);\
+        currentDateObj.setUTCHours(0,0,0,0);\
+\
+        const daysAgoCurrent = Math.round((realTodayForCalc.getTime() - currentDateObj.getTime()) / (1000 * 60 * 60 * 24));\
+        const currentData = generateDailyData(selectedDate, daysAgoCurrent);\
+        \
+        const previousDate = new Date(selectedDate);\
+        previousDate.setDate(previousDate.getDate() - 1);\
+        const daysAgoPrevious = daysAgoCurrent + 1;\
+        const previousData = generateDailyData(getISODateString(previousDate), daysAgoPrevious);\
+\
+        const filtered = currentData.filter(item => \{\
+            const searchMatch = filters.searchQuery === "" || \
+                item.client.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||\
+                item.id.toLowerCase().includes(filters.searchQuery.toLowerCase());\
+            const statusMatch = filters.status === 'all' || item.status === filters.status;\
+            const directionMatch = filters.direction === 'all' || item.dir === filters.direction;\
+            return searchMatch && statusMatch && directionMatch;\
+        \});\
+\
+        const uniqueStatusesForDay = [...new Set(currentData.map(c => c.status))];\
+\
+        return \{\
+            currentDayStats: calculateStats(currentData),\
+            previousDayStats: calculateStats(previousData),\
+            displayData: filtered,\
+            uniqueStatuses: uniqueStatusesForDay\
+        \};\
+    \}, [selectedDate, filters]);\
+\
+    const handleFilterChange = (e) => \{\
+        const \{ name, value \} = e.target;\
+        setFilters(prev => (\{ ...prev, [name]: value \}));\
+    \};\
+    \
+    const getStatusClass = (status) => \{\
+        switch (status) \{\
+            case 'Settled': return 'bg-green-500/20 text-green-300';\
+            case 'Disputed': return 'bg-yellow-500/20 text-yellow-300';\
+            case 'Pending': return 'bg-blue-500/20 text-blue-300';\
+            case 'Agreed': return 'bg-cyan-500/20 text-cyan-300';\
+            case 'Overdue': return 'bg-red-500/20 text-red-300';\
+            default: return 'bg-gray-500/20 text-gray-300';\
+        \}\
+    \};\
+\
+    const handleToggleDetails = (rowId) => \{\
+        setActiveRowId(activeRowId === rowId ? null : rowId);\
+    \};\
+\
+    const handleOpenEmailModal = (callData) => \{\
+        setSelectedCall(callData);\
+        setIsModalOpen(true);\
+        setIsSending(true);\
+        \
+        setTimeout(() => \{\
+            let draft = '';\
+            if (callData.dir === 'Payable') \{\
+                draft = `Subject: Update on Margin Call Payment - $\{callData.id\}\\n\\nDear $\{callData.client\} team,\\n\\nThis is an update regarding the margin call with ID $\{callData.id\} for $\{formatCurrencyDetailed(callData.req, callData.currency)\}.\\n\\nWe apologize for the delay in payment. The collateral is being processed and you can expect to receive it shortly.\\n\\nWe appreciate your patience.\\n\\nBest regards,\\nBarclays Collateral Operations`;\
+            \} else \{ // Receivable\
+                draft = `Subject: Urgent: Outstanding Margin Call - $\{callData.id\}\\n\\nDear $\{callData.client\} team,\\n\\nThis is a follow-up regarding the outstanding margin call with ID $\{callData.id\} for $\{formatCurrencyDetailed(callData.req, callData.currency)\}.\\n\\nThe current status is "$\{callData.status\}", with our records showing: "$\{callData.notes\}".\\n\\nCould you please provide an immediate update on the status of this payment?\\n\\nThank you for your prompt attention to this matter.\\n\\nBest regards,\\nBarclays Collateral Operations`;\
+            \}\
+            setEmailContent(draft);\
+            setIsSending(false);\
+        \}, 1500);\
+    \};\
+\
+    const handleSendEmail = () => \{\
+        setIsModalOpen(false);\
+        setShowConfirmation(true);\
+        setTimeout(() => setShowConfirmation(false), 3000);\
+    \};\
+    \
+    const realToday = new Date();\
+    const previousDay = new Date();\
+    previousDay.setDate(realToday.getDate() - 1);\
+    const dayBefore = new Date();\
+    dayBefore.setDate(realToday.getDate() - 2);\
+\
+    const DateButton = (\{ date, label \}) => \{\
+        const dateStr = getISODateString(date);\
+        const isActive = selectedDate === dateStr;\
+        return (\
+            <button onClick=\{() => setSelectedDate(dateStr)\} className=\{`px-4 py-2 text-sm font-semibold rounded-md transition-colors $\{isActive ? 'bg-blue-600 text-white' : 'bg-gray-700/50 hover:bg-gray-700'\}`\}>\
+                \{label\}\
+            </button>\
+        )\
+    \};\
+\
+    return (\
+        <div>\
+            <div className="flex items-center space-x-3 mb-2">\
+                <Activity className="w-8 h-8 text-blue-400" />\
+                <h1 className="text-3xl font-bold text-white">Live Margin Call Log</h1>\
+            </div>\
+            <p className="text-gray-400 mt-1 mb-6">View and compare daily margin call activity.</p>\
+            \
+            <div className="flex items-center justify-between mb-8">\
+                <div className="flex items-center gap-2">\
+                    <DateButton date=\{realToday\} label="Today" />\
+                    <DateButton date=\{previousDay\} label="Previous Day" />\
+                    <DateButton date=\{dayBefore\} label="Day Before" />\
+                     <div className="relative flex items-center gap-2 bg-gray-700/50 hover:bg-gray-700 p-1 rounded-md">\
+                         <label htmlFor="activity-date" className="text-sm font-medium text-gray-400 pl-2 cursor-pointer">\
+                             <Calendar size=\{18\} />\
+                         </label>\
+                        <input\
+                            type="date"\
+                            id="activity-date"\
+                            value=\{selectedDate\}\
+                            onChange=\{(e) => setSelectedDate(e.target.value)\}\
+                            className="bg-transparent outline-none text-white text-sm focus:ring-0 border-0"\
+                        />\
+                    </div>\
+                </div>\
+                <p className="text-lg font-semibold text-white">\{formatDate(selectedDate)\}</p>\
+            </div>\
+\
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">\
+                <StatCard title="Calls Issued" today=\{currentDayStats.callsIssued.toString()\} yesterday=\{previousDayStats.callsIssued.toString()\} note="vs Previous Day" />\
+                <StatCard title="Margin Required" today=\{formatMarginInMillions(currentDayStats.marginRequired)\} yesterday=\{formatMarginInMillions(previousDayStats.marginRequired)\} note="vs Previous Day" />\
+                <StatCard title="Disputed Calls" today=\{currentDayStats.disputedCalls.toString()\} yesterday=\{previousDayStats.disputedCalls.toString()\} note="vs Previous Day" mainClass="text-orange-400" />\
+                <StatCard title="Calls Settled" today=\{currentDayStats.callsSettled.toString()\} yesterday=\{previousDayStats.callsSettled.toString()\} note="vs Previous Day" mainClass="text-green-400" />\
+            </div>\
+\
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 mt-8">\
+                <h2 className="text-lg font-semibold text-white mb-4">Margin Call Log for \{formatDate(selectedDate)\}</h2>\
+                \
+                <div className="flex flex-wrap items-center gap-4 mb-4">\
+                     <div className="relative flex-grow">\
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size=\{18\} className="text-gray-500" /></div>\
+                        <input type="text" name="searchQuery" placeholder="Search by Client or Trader ID..." value=\{filters.searchQuery\} onChange=\{handleFilterChange\} className="bg-gray-900/50 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5"/>\
+                    </div>\
+                    <div className="flex items-center gap-2">\
+                        <Filter size=\{18\} className="text-gray-400"/>\
+                        <select name="status" value=\{filters.status\} onChange=\{handleFilterChange\} className="bg-gray-700 border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">\
+                            <option value="all">All Statuses</option>\
+                            \{uniqueStatuses.map(s => <option key=\{s\} value=\{s\}>\{s\}</option>)\}\
+                        </select>\
+                    </div>\
+                    <div className="flex items-center gap-2">\
+                        <ArrowUpDown size=\{18\} className="text-gray-400"/>\
+                        <select name="direction" value=\{filters.direction\} onChange=\{handleFilterChange\} className="bg-gray-700 border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">\
+                            <option value="all">All Directions</option>\
+                            <option value="Receivable">Client Payable</option>\
+                            <option value="Payable">Barclays Payable</option>\
+                        </select>\
+                    </div>\
+                    <button onClick=\{() => setFilters(\{ searchQuery: "", status: "all", direction: "all" \})\} className="bg-gray-600 hover:bg-gray-500 text-white font-semibold px-4 py-2.5 text-sm rounded-lg">Reset</button>\
+                </div>\
+\
+                <div className="overflow-x-auto">\
+                    <table className="w-full text-sm text-left text-gray-300">\
+                        <thead className="text-xs text-gray-400 uppercase bg-gray-900/50">\
+                            <tr>\
+                                <th className="py-3 px-4">Trader ID</th>\
+                                <th className="py-3 px-4">Client</th>\
+                                <th className="py-3 px-4">Direction</th>\
+                                <th className="py-3 px-4">Margin Requirement</th>\
+                                <th className="py-3 px-4">Call Status</th>\
+                                <th className="py-3 px-4 text-center">Actions</th>\
+                            </tr>\
+                        </thead>\
+                        <tbody>\
+                            \{displayData.map((item) => (\
+                                <React.Fragment key=\{item.id\}>\
+                                    <tr className="border-b border-gray-700">\
+                                        <td className="py-3 px-4 font-mono text-gray-400">\{item.id\}</td>\
+                                        <td className="py-3 px-4 font-medium text-white">\{item.client\}</td>\
+                                        <td className=\{`py-3 px-4 font-medium $\{item.dir === 'Payable' ? 'text-red-400' : 'text-green-400'\}`\}>\{item.dir === 'Payable' ? 'Barclays Payable' : 'Client Payable'\}</td>\
+                                        <td className="py-3 px-4 font-medium text-white">\{formatCurrencyDetailed(item.req, item.currency)\}</td>\
+                                        <td className="py-3 px-4"><span className=\{`$\{getStatusClass(item.status)\} text-xs font-medium px-2.5 py-1 rounded-full`\}>\{item.status\}</span></td>\
+                                        <td className="py-3 px-4 text-center">\
+                                            <button onClick=\{() => handleToggleDetails(item.id)\} className="text-blue-400 hover:text-blue-300 text-xs font-semibold">\
+                                                \{activeRowId === item.id ? 'Hide Details' : 'Details'\}\
+                                            </button>\
+                                        </td>\
+                                    </tr>\
+                                    \{activeRowId === item.id && (\
+                                        <tr className="bg-gray-700/50">\
+                                            <td colSpan="6" className="p-0">\
+                                                <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6">\
+                                                    <div className="md:col-span-2">\
+                                                        <h4 className="font-semibold text-white mb-2">Payment Details</h4>\
+                                                        <div className="text-xs space-y-2 text-gray-300">\
+                                                            <p><span className="font-semibold text-gray-400">Flow:</span> \{item.dir === 'Payable' ? `Barclays -> $\{item.client\}` : `$\{item.client\} -> Barclays`\}</p>\
+                                                            <p><span className="font-semibold text-gray-400">Account:</span> <span className="font-mono">\{item.acct\}</span></p>\
+                                                            <p><span className="font-semibold text-gray-400">Status:</span> <span className=\{`font-medium $\{item.pmtStatus.includes('Received') || item.pmtStatus.includes('Sent') ? 'text-green-300' : 'text-orange-300'\}`\}>\{item.pmtStatus\}</span></p>\
+                                                            <p><span className="font-semibold text-gray-400">Ops Team Notes:</span> \{item.notes\}</p>\
+                                                        </div>\
+                                                        <div className="mt-4">\
+                                                            <button onClick=\{() => handleOpenEmailModal(item)\} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs">Compose AI Email</button>\
+                                                        </div>\
+                                                    </div>\
+                                                    <div>\
+                                                        <h4 className="font-semibold text-white mb-2">Recent Client History</h4>\
+                                                        <ul className="text-xs space-y-1">\
+                                                            \{item.history.map(h => (\
+                                                                <li key=\{h.date\} className="flex justify-between"><span className="text-gray-400">\{formatDate(h.date)\}:</span> <span className=\{h.status.includes('Settled') ? 'text-green-400' : 'text-orange-400'\}>\{h.status\}</span></li>\
+                                                            ))\}\
+                                                        </ul>\
+                                                    </div>\
+                                                </div>\
+                                            </td>\
+                                        </tr>\
+                                    )\}\
+                                </React.Fragment>\
+                            ))\}\
+                        </tbody>\
+                    </table>\
+                </div>\
+            </div>\
+\
+            \{isModalOpen && (\
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">\
+                    <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col p-6">\
+                        <div className="flex justify-between items-center mb-4">\
+                            <h3 className="text-lg font-semibold text-white">Compose AI-Generated Email</h3>\
+                            <button onClick=\{() => setIsModalOpen(false)\} className="text-gray-400 hover:text-white"><X size=\{24\} /></button>\
+                        </div>\
+                        <div className="flex-grow overflow-y-auto">\
+                            <textarea value=\{emailContent\} onChange=\{(e) => setEmailContent(e.target.value)\} className="w-full h-80 bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-gray-300" placeholder="Generating AI-powered draft..." disabled=\{isSending\}></textarea>\
+                        </div>\
+                        <div className="mt-4 flex justify-end space-x-3">\
+                            <button onClick=\{() => setIsModalOpen(false)\} className="bg-gray-600 hover:bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg text-sm">Cancel</button>\
+                            <button onClick=\{handleSendEmail\} disabled=\{isSending\} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-sm flex items-center disabled:opacity-50">\
+                                \{isSending ? <Loader2 className="animate-spin mr-2" size=\{16\}/> : <Send className="mr-2" size=\{16\}/>\}\
+                                Send Email\
+                            </button>\
+                        </div>\
+                    </div>\
+                </div>\
+            )\}\
+            \
+            \{showConfirmation && (\
+                 <div className="fixed bottom-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg text-sm shadow-lg">\
+                    Email sent successfully!\
+                </div>\
+            )\}\
+        </div>\
+    );\
+\};\
+\
+const StatCard = (\{ title, today, yesterday, note, mainClass = 'text-white', noteClass = 'text-gray-400' \}) => (\
+    <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">\
+        <p className="text-sm text-gray-400">\{title\}</p>\
+        <div className="flex flex-col sm:flex-row sm:items-baseline mt-2">\
+            <p className=\{`text-2xl font-bold $\{mainClass\}`\}>\{today\}</p>\
+            <p className="sm:ml-2 text-xs text-gray-500">/ \{yesterday\}</p>\
+        </div>\
+        <p className=\{`text-xs mt-1 $\{noteClass\}`\}>\{note\}</p>\
+    </div>\
+);\
+\
+// --- components/Reconciliation.js (NEW) ---\
+const Reconciliation = () => \{\
+    const initialRecData = useMemo(() => \{\
+        const data = [\
+            \{ marginCallId: 'MC-9501', clientId: 'CID5962', agreedAmount: 1200000, receivedAmount: 1200000.01, settlementDate: '2025-07-10', reason: 'Minor rounding difference.', direction: 'Receivable' \},\
+            \{ marginCallId: 'MC-9502', clientId: 'CID2693', agreedAmount: 850000, receivedAmount: 850000, settlementDate: '2025-07-10', reason: null, direction: 'Receivable' \},\
+            \{ marginCallId: 'MC-9503', clientId: 'CID5299', agreedAmount: 2000000, receivedAmount: 1999500, settlementDate: '2025-07-10', reason: 'Shortfall in payment.', direction: 'Receivable' \},\
+            \{ marginCallId: 'MC-9504', clientId: 'CID4233', agreedAmount: 500000, receivedAmount: 500000, settlementDate: '2025-07-09', reason: null, direction: 'Receivable' \},\
+            \{ marginCallId: 'MC-9506', clientId: 'CID1598', agreedAmount: 700000, receivedAmount: 690000, settlementDate: '2025-07-09', reason: 'Partial payment received.', direction: 'Receivable' \},\
+            \{ marginCallId: 'MC-9507', clientId: 'CID8072', agreedAmount: 800000, receivedAmount: null, settlementDate: '2025-07-11', reason: 'Payment not yet received.', direction: 'Receivable' \},\
+            \{ marginCallId: 'MC-9508', clientId: 'CID7079', agreedAmount: 500000, receivedAmount: null, settlementDate: '2025-07-11', reason: 'Payment not yet received.', direction: 'Receivable' \},\
+            \{ marginCallId: 'MC-9511', clientId: 'CID5962', agreedAmount: 700000, receivedAmount: 699999.99, settlementDate: '2025-07-08', reason: 'Minor rounding difference.', direction: 'Payable' \},\
+            \{ marginCallId: 'MC-9515', clientId: 'CID7506', agreedAmount: 900000, receivedAmount: 899500, settlementDate: '2025-07-08', reason: 'Shortfall in payment.', direction: 'Payable' \},\
+        ];\
+        \
+        return data.map(item => \{\
+            let status = 'Failed';\
+            let difference = null;\
+            if (item.receivedAmount !== null) \{\
+                difference = item.receivedAmount - item.agreedAmount;\
+                status = Math.abs(difference) < 1 ? 'Matched' : 'Break';\
+            \}\
+            return \{ ...item, difference, status \};\
+        \});\
+    \}, []);\
+\
+    const [recData, setRecData] = useState(initialRecData);\
+    const [isModalOpen, setIsModalOpen] = useState(false);\
+    const [selectedCall, setSelectedCall] = useState(null);\
+    const [confirmation, setConfirmation] = useState(\{ show: false, message: '', type: '' \});\
+    const [aiEmail, setAiEmail] = useState('');\
+    const [isGeneratingEmail, setIsGeneratingEmail] = useState(false);\
+    \
+    const initialFilters = \{ searchQuery: "", status: "all", direction: "all" \};\
+    const [filters, setFilters] = useState(initialFilters);\
+\
+    const uniqueStatuses = useMemo(() => [...new Set(initialRecData.map(c => c.status))], [initialRecData]);\
+\
+    const filteredRecData = useMemo(() => \{\
+        return recData.filter(item => \{\
+            const searchMatch = filters.searchQuery === "" || \
+                item.marginCallId.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||\
+                item.clientId.toLowerCase().includes(filters.searchQuery.toLowerCase());\
+            const statusMatch = filters.status === 'all' || item.status === filters.status;\
+            const directionMatch = filters.direction === 'all' || item.direction === filters.direction;\
+            return searchMatch && statusMatch && directionMatch;\
+        \});\
+    \}, [recData, filters]);\
+\
+    const handleFilterChange = (e) => \{\
+        const \{ name, value \} = e.target;\
+        setFilters(prev => (\{ ...prev, [name]: value \}));\
+    \};\
+\
+    const handleInvestigate = (call) => \{\
+        setSelectedCall(call);\
+        setAiEmail('');\
+        setIsModalOpen(true);\
+    \};\
+\
+    const handleCloseModal = () => \{\
+        setIsModalOpen(false);\
+        setSelectedCall(null);\
+    \};\
+    \
+    const showConfirmation = (message, type) => \{\
+        setConfirmation(\{ show: true, message, type \});\
+        setTimeout(() => \{\
+            setConfirmation(\{ show: false, message: '', type: '' \});\
+        \}, 3000);\
+    \};\
+\
+    const handleGenerateEmail = () => \{\
+        if (!selectedCall) return;\
+        setIsGeneratingEmail(true);\
+        const \{ clientId, marginCallId, agreedAmount, receivedAmount, difference, reason, direction \} = selectedCall;\
+        \
+        setTimeout(() => \{\
+            let draft = '';\
+    \
+            if (direction === 'Payable' && difference !== 0) \{ // Barclays is PAYING the client, and there's a break.\
+                if (difference < 0) \{ // SHORTFALL: Barclays paid LESS than agreed.\
+                    draft = `Subject: Urgent Action: Discrepancy in Payment for Margin Call $\{marginCallId\}\\n\\nDear $\{clientId\} Team,\\n\\nWe are writing to address a payment discrepancy related to margin call $\{marginCallId\}.\\n\\nOur records show an agreed payment of $\{formatCurrency(agreedAmount)\} from Barclays was due. We understand the amount received on your end was $\{formatCurrency(receivedAmount)\}, leaving a shortfall of $\{formatCurrency(Math.abs(difference))\}.\\n\\nWe sincerely apologize for this error. We are taking immediate action to remit the outstanding balance of $\{formatCurrency(Math.abs(difference))\} and will ensure it is paid as soon as possible.\\n\\nWe appreciate your understanding and will confirm once the corrective payment has been sent.\\n\\nBest regards,\\nBarclays Collateral Operations`;\
+                \} else \{ // SURPLUS: Barclays paid MORE than agreed.\
+                    draft = `Subject: Notice of Overpayment on Margin Call $\{marginCallId\}\\n\\nDear $\{clientId\} Team,\\n\\nThis email is to inform you of an overpayment from our side regarding margin call $\{marginCallId\}.\\n\\nThe agreed settlement amount was $\{formatCurrency(agreedAmount)\}, but our records show a payment of $\{formatCurrency(receivedAmount)\} was made, resulting in a surplus of $\{formatCurrency(difference)\}.\\n\\nCould you please confirm receipt of the surplus amount and advise on the process for its return?\\n\\nThank you,\\nBarclays Collateral Operations`;\
+                \}\
+            \} else if (direction === 'Receivable' && difference !== 0) \{ // Barclays is RECEIVING from the client, and there's a break.\
+                if (difference < 0) \{ // SHORTFALL: Client paid LESS.\
+                    draft = `Subject: Urgent: Payment Shortfall on Margin Call $\{marginCallId\}\\n\\nDear $\{clientId\} Team,\\n\\nWe are writing to follow up on a payment discrepancy for margin call $\{marginCallId\}.\\n\\nThe agreed settlement amount was $\{formatCurrency(agreedAmount)\}. However, our records show we have only received $\{formatCurrency(receivedAmount)\}, resulting in a shortfall of $\{formatCurrency(Math.abs(difference))\}.\\n\\nWe have confirmed our account details and have not received the full amount. Could you please check with your bank to trace the payment and arrange for the remittance of the outstanding balance at your earliest convenience?\\n\\nPlease revert with an update.\\n\\nBest regards,\\nBarclays Collateral Operations`;\
+                \} else \{ // SURPLUS: Client paid MORE.\
+                    draft = `Subject: Notice of Overpayment Received for Margin Call $\{marginCallId\}\\n\\nDear $\{clientId\} Team,\\n\\nThis is to confirm that we have received an overpayment for margin call $\{marginCallId\}.\\n\\nThe agreed amount was $\{formatCurrency(agreedAmount)\}, and we have received $\{formatCurrency(receivedAmount)\}, which is a surplus of $\{formatCurrency(difference)\}.\\n\\nPlease advise if you would like this amount returned or credited against future margin calls.\\n\\nThank you,\\nBarclays Collateral Operations`;\
+                \}\
+            \} else \{ // Fallback for any other case\
+                draft = `Subject: Payment Discrepancy for Margin Call $\{marginCallId\}\\n\\nDear $\{clientId\} Team,\\n\\nWe are writing to inform you of a payment discrepancy regarding margin call $\{marginCallId\}.\\n\\nThe agreed settlement amount was $\{formatCurrency(agreedAmount)\}, however, our records show a received amount of $\{formatCurrency(receivedAmount)\}, resulting in a difference of $\{formatCurrency(difference)\}.\\n\\nCould you please investigate and advise?\\n\\nBest regards,\\nBarclays Collateral Operations`;\
+            \}\
+            \
+            setAiEmail(draft);\
+            setIsGeneratingEmail(false);\
+        \}, 1500);\
+    \};\
+\
+    const handleSendEmail = () => \{\
+        handleCloseModal();\
+        showConfirmation(`Email regarding $\{selectedCall.marginCallId\} sent to client.`, 'success');\
+    \};\
+\
+    const stats = recData.reduce((acc, item) => \{\
+        acc.total++;\
+        if (item.status === 'Matched') acc.matched++;\
+        else if (item.status === 'Break') acc.breaks++;\
+        else if (item.status === 'Failed') acc.failed++;\
+        return acc;\
+    \}, \{ total: 0, matched: 0, breaks: 0, failed: 0 \});\
+\
+    return (\
+        <div>\
+            <h1 className="text-3xl font-bold text-white">Cash Reconciliation</h1>\
+            <p className="text-gray-400 mt-1">Verify agreed margin call amounts against received cash payments.</p>\
+\
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-8">\
+                <RecStatCard title="Total Items" value=\{stats.total\} />\
+                <RecStatCard title="Matched" value=\{stats.matched\} valueClass="text-green-400" />\
+                <RecStatCard title="Breaks" value=\{stats.breaks\} valueClass="text-yellow-400" />\
+                <RecStatCard title="Failed" value=\{stats.failed\} valueClass="text-red-400" />\
+            </div>\
+\
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 mt-8">\
+                <h2 className="text-lg font-semibold text-white mb-4">Reconciliation Log</h2>\
+\
+                <div className="flex flex-wrap items-center gap-4 mb-4">\
+                     <div className="relative flex-grow">\
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size=\{18\} className="text-gray-500" /></div>\
+                        <input type="text" name="searchQuery" placeholder="Search by Margin Call or Client ID..." value=\{filters.searchQuery\} onChange=\{handleFilterChange\} className="bg-gray-900/50 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5"/>\
+                    </div>\
+                    <div className="flex items-center gap-2">\
+                        <Filter size=\{18\} className="text-gray-400"/>\
+                        <select name="status" value=\{filters.status\} onChange=\{handleFilterChange\} className="bg-gray-700 border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">\
+                            <option value="all">All Statuses</option>\
+                            \{uniqueStatuses.map(s => <option key=\{s\} value=\{s\}>\{s\}</option>)\}\
+                        </select>\
+                    </div>\
+                    <div className="flex items-center gap-2">\
+                        <ArrowUpDown size=\{18\} className="text-gray-400"/>\
+                        <select name="direction" value=\{filters.direction\} onChange=\{handleFilterChange\} className="bg-gray-700 border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">\
+                            <option value="all">All Directions</option>\
+                            <option value="Receivable">Client Payable</option>\
+                            <option value="Payable">Barclays Payable</option>\
+                        </select>\
+                    </div>\
+                    <button onClick=\{() => setFilters(initialFilters)\} className="bg-gray-600 hover:bg-gray-500 text-white font-semibold px-4 py-2.5 text-sm rounded-lg">Reset</button>\
+                </div>\
+\
+                <div className="overflow-x-auto">\
+                    <table className="w-full text-left text-gray-300">\
+                        <thead className="text-xs text-gray-400 uppercase bg-gray-900/50">\
+                            <tr>\
+                                <th className="py-2 px-4">Margin Call ID</th>\
+                                <th className="py-2 px-4">Client ID</th>\
+                                <th className="py-2 px-4">Direction</th>\
+                                <th className="py-2 px-4">Agreed Amount</th>\
+                                <th className="py-2 px-4">Received/Payable Amount</th>\
+                                <th className="py-2 px-4">Difference</th>\
+                                <th className="py-2 px-4">Status</th>\
+                                <th className="py-2 px-4">Settlement Date</th>\
+                                <th className="py-2 px-4 text-center">Actions</th>\
+                            </tr>\
+                        </thead>\
+                        <tbody>\
+                            \{filteredRecData.map(item => \{\
+                                const diffClass = item.status === 'Break' ? 'text-yellow-400' : 'text-gray-400';\
+                                const statusClass = item.status === 'Matched' ? 'bg-green-500/20 text-green-300' : item.status === 'Break' ? 'bg-yellow-500/20 text-yellow-300' : 'bg-red-500/20 text-red-300';\
+                                return (\
+                                <tr key=\{item.marginCallId\} className="border-b border-gray-800 text-xs leading-tight">\
+                                    <td className="py-2 px-4 font-mono text-gray-400">\{item.marginCallId\}</td>\
+                                    <td className="py-2 px-4">\{item.clientId\}</td>\
+                                    <td className=\{`py-2 px-4 font-medium $\{item.direction === 'Payable' ? 'text-red-400' : 'text-green-400'\}`\}>\{item.direction === 'Payable' ? 'Barclays Payable' : 'Client Payable'\}</td>\
+                                    <td className="py-2 px-4">\{formatCurrency(item.agreedAmount)\}</td>\
+                                    <td className="py-2 px-4">\{item.receivedAmount !== null ? formatCurrency(item.receivedAmount) : <span className="text-gray-500">N/A</span>\}</td>\
+                                    <td className=\{`py-2 px-4 font-medium $\{diffClass\}`\}>\{item.difference !== null ? formatCurrency(item.difference) : <span className="text-gray-500">N/A</span>\}</td>\
+                                    <td className="py-2 px-4"><span className=\{`$\{statusClass\} text-xs font-medium px-2.5 py-1 rounded-full`\}>\{item.status\}</span></td>\
+                                    <td className="py-2 px-4">\{item.settlementDate\}</td>\
+                                    <td className="py-2 px-4 text-center">\
+                                        \{item.status === 'Break' ? (\
+                                            <button onClick=\{() => handleInvestigate(item)\} className="text-blue-400 hover:text-blue-300 text-xs font-semibold">Investigate</button>\
+                                        ) : 'N/A'\}\
+                                    </td>\
+                                </tr>\
+                                );\
+                            \})\}\
+                        </tbody>\
+                    </table>\
+                </div>\
+            </div>\
+\
+            \{isModalOpen && selectedCall && (\
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4">\
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">\
+                        <div className="p-4 border-b border-gray-700 flex justify-between items-center">\
+                            <h3 className="text-lg font-semibold text-white">Investigate Payment Break</h3>\
+                            <button onClick=\{handleCloseModal\}><X size=\{20\} className="text-gray-400 hover:text-white"/></button>\
+                        </div>\
+                        <div className="p-6 flex-grow overflow-y-auto text-sm space-y-4">\
+                            <div>\
+                                <h4 className="font-semibold text-white mb-2">Break Details</h4>\
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 bg-gray-900/40 p-3 rounded-md">\
+                                    <p className="font-semibold text-gray-400">Margin Call ID:</p><p className="font-mono">\{selectedCall.marginCallId\}</p>\
+                                    <p className="font-semibold text-gray-400">Client ID:</p><p>\{selectedCall.clientId\}</p>\
+                                    <p className="font-semibold text-gray-400">Agreed Amount:</p><p className="text-green-400">\{formatCurrency(selectedCall.agreedAmount)\}</p>\
+                                    <p className="font-semibold text-gray-400">Received Amount:</p><p className="text-red-400">\{formatCurrency(selectedCall.receivedAmount)\}</p>\
+                                    <p className="font-semibold text-gray-400">Difference:</p><p className="font-bold text-red-400">\{formatCurrency(selectedCall.difference)\}</p>\
+                                    <p className="font-semibold text-gray-400">Reason:</p><p>\{selectedCall.reason\}</p>\
+                                </div>\
+                            </div>\
+                             \
+                             <div className="border-t border-gray-700 pt-4">\
+                                <h4 className="font-semibold text-white mb-2">AI-Powered Communication</h4>\
+                                \{!aiEmail && (\
+                                    <button onClick=\{handleGenerateEmail\} disabled=\{isGeneratingEmail\} className="w-full flex items-center justify-center gap-2 text-sm bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-3 rounded-lg disabled:opacity-50">\
+                                        \{isGeneratingEmail ? <><Loader2 className="animate-spin" size=\{16\}/> Generating...</> : <><Sparkles size=\{16\}/> Generate Client Email</>\}\
+                                    </button>\
+                                )\}\
+                                \{aiEmail && (\
+                                    <div>\
+                                        <textarea value=\{aiEmail\} onChange=\{(e) => setAiEmail(e.target.value)\} rows="8" className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-gray-300"></textarea>\
+                                        <div className="flex justify-end mt-2">\
+                                            <button onClick=\{handleSendEmail\} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-lg"><Send size=\{16\}/> Send to Client</button>\
+                                        </div>\
+                                    </div>\
+                                )\}\
+                            </div>\
+                        </div>\
+                        <div className="p-4 bg-gray-800/50 border-t border-gray-700 flex justify-end space-x-3">\
+                            <button onClick=\{handleCloseModal\} className="bg-gray-600 hover:bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg text-sm">Cancel</button>\
+                        </div>\
+                    </div>\
+                </div>\
+            )\}\
+            \
+            \{confirmation.show && (\
+                <div className=\{`fixed bottom-5 right-5 text-white py-2 px-4 rounded-lg text-sm shadow-lg $\{confirmation.type === 'success' ? 'bg-green-500' : 'bg-blue-500'\}`\}>\
+                    \{confirmation.message\}\
+                </div>\
+            )\}\
+        </div>\
+    );\
+\};\
+\
+const RecStatCard = (\{ title, value, valueClass = 'text-white' \}) => (\
+    <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 text-center">\
+        <p className="text-sm text-gray-400">\{title\}</p>\
+        <p className=\{`text-2xl font-bold mt-2 $\{valueClass\}`\}>\{value\}</p>\
+    </div>\
+);\
+\
+\
+// --- App.js ---\
+const App = () => \{\
+  const [activeTab, setActiveTab] = useState('dashboard');\
+\
+  useEffect(() => \{\
+    const script1 = document.createElement("script");\
+    script1.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";\
+    script1.async = true;\
+    \
+    const script2 = document.createElement("script");\
+    script2.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js";\
+    script2.async = true;\
+\
+    script1.onload = () => \{\
+        document.body.appendChild(script2);\
+    \};\
+    \
+    document.body.appendChild(script1);\
+\
+    return () => \{\
+      if (document.body.contains(script1)) \{\
+        document.body.removeChild(script1);\
+      \}\
+      if (document.body.contains(script2)) \{\
+        document.body.removeChild(script2);\
+      \}\
+    \}\
+  \}, []);\
+\
+  const renderContent = () => \{\
+    switch (activeTab) \{\
+      case 'dashboard':\
+        return <CollateralDashboard />;\
+      case 'clientInfo':\
+        return <ClientInformation />;\
+      case 'workflow':\
+        return <MarginCallWorkflow />;\
+      case 'dailyActivity':\
+        return <DailyActivityLog />;\
+      case 'reconciliation':\
+        return <Reconciliation />;\
+      case 'settings':\
+        return <PlaceholderComponent title="Settings" />;\
+      default:\
+        return <CollateralDashboard />;\
+    \}\
+  \};\
+\
+  return (\
+    <div className="bg-gray-900 text-gray-200 min-h-screen font-sans">\
+      <div className="flex">\
+        <aside className="w-64 bg-gray-950 p-6 flex flex-col justify-between min-h-screen shadow-2xl">\
+          <div>\
+            <div className="flex items-center mb-10"> <Shield className="h-10 w-10 text-blue-400 mr-3" /> <h1 className="text-xl font-bold tracking-wider text-white"> Barclays <span className="font-light text-gray-400">CMS</span> </h1> </div>\
+            <nav className="flex flex-col space-y-2">\
+              <SidebarButton icon=\{<Home size=\{20\} />\} label="Dashboard" active=\{activeTab === 'dashboard'\} onClick=\{() => setActiveTab('dashboard')\} />\
+              <SidebarButton icon=\{<User size=\{20\} />\} label="Client Information" active=\{activeTab === 'clientInfo'\} onClick=\{() => setActiveTab('clientInfo')\} />\
+              <SidebarButton icon=\{<GitMerge size=\{20\} />\} label="Workflow" active=\{activeTab === 'workflow'\} onClick=\{() => setActiveTab('workflow')\} />\
+              <SidebarButton icon=\{<Activity size=\{20\} />\} label="Daily Activity Log" active=\{activeTab === 'dailyActivity'\} onClick=\{() => setActiveTab('dailyActivity')\} />\
+              <SidebarButton icon=\{<FileCheck size=\{20\} />\} label="Reconciliation" active=\{activeTab === 'reconciliation'\} onClick=\{() => setActiveTab('reconciliation')\} />\
+            </nav>\
+          </div>\
+          <div> <SidebarButton icon=\{<Settings size=\{20\} />\} label="Settings" active=\{activeTab === 'settings'\} onClick=\{() => setActiveTab('settings')\} /> </div>\
+        </aside>\
+        <main className="flex-1 p-8 overflow-y-auto">\
+          <div className="max-w-7xl mx-auto">\
+            \{renderContent()\}\
+          </div>\
+        </main>\
+      </div>\
+    </div>\
+  );\
+\};}
