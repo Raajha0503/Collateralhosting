@@ -105,6 +105,13 @@ const formatCurrencyDetailed = (value, currency = 'USD') => {
 
 const formatNumber = (value) => (value || 0).toLocaleString()
 
+// Safe numeric parser used across components
+function parseNumber(value) {
+  if (value === null || value === undefined || value === '') return 0
+  const n = Number(String(value).replace(/,/g, ''))
+  return Number.isFinite(n) ? n : 0
+}
+
 const formatDate = (date) => {
   if (!date) return ""
   const d = new Date(date)
@@ -2733,7 +2740,11 @@ const ClientContextualSummary = ({ clientId, clientSummaryData }) => {
       <div className="grid grid-cols-3 lg:grid-cols-6 gap-4 text-xs">
         <InfoField label="Total Exposure" value={formatCurrency(clientData.exposure)} />
         <InfoField label="MTA" value={formatCurrencyDetailed(clientData.mta.amount, clientData.mta.currency)} />
-        <InfoField label="Agreed Amt" value={formatCurrency(clientData.agreedAmount)} valueClass="text-green-600" />
+        <InfoField
+          label="Agreed Amt"
+          value={formatCurrencyDetailed(parseNumber(clientData.agreedAmount), clientData?.mta?.currency || 'USD')}
+          valueClass="text-green-600"
+        />
         <InfoField label="Value Date" value={clientData.valueDate} />
         <InfoField label="Disputed?" value={disputeText} valueClass={getDisputeStatusClass(clientData.disputeStatus)} />
         <InfoField
@@ -2763,10 +2774,43 @@ const MarginCallWorkflow = () => {
   const [workflowFirebaseState, setWorkflowFirebaseState] = useState<'mock' | 'firebase-data' | 'firebase-table'>('firebase-data')
 
   // Helpers to robustly map Firebase/unified rows
-  const parseNumber = (value) => {
+  function parseNumber(value) {
     if (value === null || value === undefined || value === '') return 0
     const n = Number(String(value).replace(/,/g, ''))
     return Number.isFinite(n) ? n : 0
+  }
+
+  const extractMta = (row) => {
+    // If nested object exists
+    if (row?.mta && typeof row.mta === 'object') {
+      const amt = parseNumber(row.mta.amount)
+      const cur = normalizeCurrencyCode(row.mta.currency || row.reportingCurrency || row.currency || 'USD')
+      return { amount: amt, currency: cur }
+    }
+    // Flat fields in various shapes
+    const amountCandidate =
+      row.mtaAmount ??
+      row.mta_amount ??
+      row['mta.amount'] ??
+      row.MinimumTransferAmount ??
+      row['Minimum Transfer Amount'] ??
+      row.minTransferAmount ??
+      row.minimumTransferAmount ??
+      row.MTA ??
+      row.mta // sometimes string like "500000 USD"
+
+    let amount = 0
+    let currency = row.mtaCurrency || row.mta_currency || row['mta.currency'] || row.reportingCurrency || row.currency || 'USD'
+
+    if (typeof amountCandidate === 'string' && amountCandidate.includes(' ')) {
+      const parts = amountCandidate.trim().split(/\s+/)
+      amount = parseNumber(parts[0])
+      if (parts[1]) currency = parts[1]
+    } else {
+      amount = parseNumber(amountCandidate)
+    }
+
+    return { amount, currency: normalizeCurrencyCode(currency) }
   }
 
   const normalizeDirection = (row) => {
@@ -2803,6 +2847,11 @@ const MarginCallWorkflow = () => {
   const mapFirebaseRowToCall = (row) => {
     const id = row.id || 'MC-FB'
     const currency = normalizeCurrencyCode(row.currency || row.reportingCurrency || 'USD')
+    const callAmt = parseNumber(row.callAmount || row.amount)
+    const dispAmt = parseNumber(row.disputeAmount)
+    const agreedRaw = row.agreedAmount ?? row.agreed_amount ?? row.agreedAmt ?? row['Agreed Amount'] ?? row.agreed
+    const agreedParsed = parseNumber(agreedRaw)
+    const agreedVal = agreedParsed > 0 ? agreedParsed : Math.max(0, callAmt - dispAmt)
     return {
       id,
       clientId: row.client || row.clientId || row.client_id || row.CID || 'CLIENT',
@@ -2810,12 +2859,14 @@ const MarginCallWorkflow = () => {
       bookingType: row.bookingType || 'Manual',
       currency,
       exposure: parseNumber(row.exposure),
-      callAmount: parseNumber(row.callAmount || row.amount),
-      disputeAmount: parseNumber(row.disputeAmount),
+      callAmount: callAmt,
+      disputeAmount: dispAmt,
+      agreedAmount: agreedVal,
       disputeReason: row.disputeReason || '',
       direction: normalizeDirection(row),
       portfolio: coercePortfolio(row, id, currency),
       bookingStatus: row.bookingStatus || 'Pending',
+      mta: extractMta(row),
     }
   }
 
@@ -2870,8 +2921,13 @@ const MarginCallWorkflow = () => {
       }
 
       const totalExposure = clientCalls.reduce((sum, call) => sum + call.exposure, 0)
-      const totalCallAmount = clientCalls.reduce((sum, call) => sum + call.callAmount, 0)
-      const totalDisputeAmount = clientCalls.reduce((sum, call) => sum + call.disputeAmount, 0)
+      const totalCallAmount = clientCalls.reduce((sum, call) => sum + parseNumber(call.callAmount), 0)
+      const totalDisputeAmount = clientCalls.reduce((sum, call) => sum + parseNumber(call.disputeAmount), 0)
+      const totalAgreedAmount = clientCalls.reduce((sum, call) => {
+        const agreed = parseNumber(call.agreedAmount)
+        if (agreed > 0) return sum + agreed
+        return sum + Math.max(0, parseNumber(call.callAmount) - parseNumber(call.disputeAmount))
+      }, 0)
 
       const numCalls = clientCalls.length
       const numSettled = clientCalls.filter((c) => c.bookingStatus === "Fully Booked").length
@@ -2880,13 +2936,18 @@ const MarginCallWorkflow = () => {
       if (numSettled === numCalls) settlementStatus = "Settled"
       else if (numSettled > 0) settlementStatus = "Partially Settled"
 
+      const derivedMta = (() => {
+        const withMta = clientCalls.find((c) => c?.mta && parseNumber(c.mta.amount) > 0)
+        return withMta?.mta || clientInfo.mta
+      })()
+
       return {
         clientId: clientId,
         clientName: clientInfo.accountName,
         exposure: totalExposure,
-        mta: clientInfo.mta,
+        mta: derivedMta,
         callAmount: totalCallAmount,
-        agreedAmount: totalCallAmount - totalDisputeAmount,
+        agreedAmount: totalAgreedAmount,
         disputedAmount: totalDisputeAmount,
         disputeStatus: totalDisputeAmount > 0 ? "Yes" : "No",
         valueDate: formatDate(new Date()),
@@ -3260,7 +3321,11 @@ const MarginCallWorkflow = () => {
                       />
                       <InfoField
                         label="Agreed Amount"
-                        value={`${selectedCall.currency} ${formatNumber(selectedCall.callAmount - selectedCall.disputeAmount)}`}
+                        value={(() => {
+                          const agreed = parseNumber(selectedCall?.agreedAmount)
+                          const fallback = Math.max(0, parseNumber(selectedCall?.callAmount) - parseNumber(selectedCall?.disputeAmount))
+                          return formatCurrencyDetailed(agreed > 0 ? agreed : fallback, selectedCall?.currency)
+                        })()}
                         valueClass="text-green-400"
                       />
                     </>
