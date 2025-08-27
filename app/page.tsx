@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useRef, useEffect, useMemo } from "react"
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react"
 // import FirebaseTest from "../components/FirebaseTest"
 import CsvUploader from "../components/CsvUploader"
 import FirebaseDataToggle from "../components/FirebaseDataToggle"
@@ -81,11 +81,36 @@ const formatCurrencyForScorecard = (value) => {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
 }
 
-const formatCurrencyDetailed = (value, currency = "USD") => {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value)
+// Safer currency formatter that tolerates bad/dirty currency codes from data sources
+const normalizeCurrencyCode = (code) => {
+  if (!code || typeof code !== 'string') return 'USD'
+  const cleaned = code.replace(/[^A-Za-z]/g, '').toUpperCase().trim()
+  if (/^[A-Z]{3}$/.test(cleaned)) return cleaned
+  // Fallback mapping for a few common variants
+  const alias = {
+    US: 'USD', USDOLLAR: 'USD', SG: 'SGD', CADOLLAR: 'CAD', EU: 'EUR', GBPound: 'GBP', RUPEE: 'INR'
+  }
+  return alias[cleaned] || 'USD'
+}
+
+const formatCurrencyDetailed = (value, currency = 'USD') => {
+  const safeCurrency = normalizeCurrencyCode(currency)
+  const amount = Number(value) || 0
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: safeCurrency }).format(amount)
+  } catch {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
+  }
 }
 
 const formatNumber = (value) => (value || 0).toLocaleString()
+
+// Safe numeric parser used across components
+function parseNumber(value) {
+  if (value === null || value === undefined || value === '') return 0
+  const n = Number(String(value).replace(/,/g, ''))
+  return Number.isFinite(n) ? n : 0
+}
 
 const formatDate = (date) => {
   if (!date) return ""
@@ -494,6 +519,8 @@ const DownloadDropdown = ({ onExport }) => {
     onExport(type)
     setIsOpen(false)
   }
+  // Note: download dropdown is independent of workflow Firebase toggle
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button
@@ -901,7 +928,7 @@ const EditClientModal = ({ isOpen, onClose, client, onSave }) => {
           value={newItem[type]}
           onChange={handleNewItemChange}
           placeholder={`Add new ${label.slice(0, -1).toLowerCase()}...`}
-          className="bg-gray-800 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+          className="bg-white border border-input text-foreground text-sm rounded-lg focus:ring-ring focus:border-ring block w-full p-2.5"
         />
         <button
           onClick={() => handleAddItem(type)}
@@ -915,7 +942,7 @@ const EditClientModal = ({ isOpen, onClose, client, onSave }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-4xl">
+      <div className="bg-white border border-border rounded-2xl shadow-2xl w-full max-w-4xl">
         <div className="p-6 border-b border-border">
           <h3 className="text-xl font-bold text-foreground">
             Edit Arrangements for {client.accountName} ({client.clientId})
@@ -1117,8 +1144,8 @@ const ViewAgreementModal = ({ isOpen, onClose, client }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-        <div className="p-6 border-b border-border flex justify-between items-center">
+      <div className="bg-white border border-border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+        <div className="p-6 border-b border-border flex justify-between items-center bg-white">
           <div>
             <h3 className="text-xl font-bold text-foreground">{agreementTitle}</h3>
             <p className="text-muted-foreground">Agreement between {partyADetails.name} and {partyBDetails.name}</p>
@@ -1127,7 +1154,7 @@ const ViewAgreementModal = ({ isOpen, onClose, client }) => {
             <X size={24} />
           </button>
         </div>
-        <div className="p-6 max-h-[70vh] overflow-y-auto">
+        <div className="p-6 max-h-[70vh] overflow-y-auto bg-white">
           <div className="space-y-6">
             <AgreementSection title="1. Parties">
               <p><span className="font-semibold text-foreground">Party A:</span> {partyADetails.name}, {partyADetails.address}, {partyADetails.city}</p>
@@ -1199,7 +1226,7 @@ const ViewAccountModal = ({ isOpen, onClose, client }) => {
             <X size={24} />
           </button>
         </div>
-        <div className="p-6 max-h-[70vh] overflow-y-auto">
+        <div className="p-6 max-h-[70vh] overflow-y-auto bg-white">
           <div className="space-y-6">
             <div>
               <h4 className="text-lg font-semibold text-blue-300 mb-3">Core Identifiers</h4>
@@ -2144,68 +2171,105 @@ const CollateralDashboard = () => {
 // --- Client Information Component ---
 const ClientActionsDropdown = ({ client, onEdit, onViewAccount, onViewAgreement, onSendToChecker }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const dropdownRef = useRef(null)
+  const buttonRef = useRef(null)
+  const menuRef = useRef(null)
+  const [menuStyle, setMenuStyle] = useState({ top: 0, left: 0 })
+
+  // Compute and pin menu position to viewport (portal) so it never gets clipped
+  const positionMenu = useCallback(() => {
+    const btn = buttonRef.current
+    if (!btn) return
+    const rect = btn.getBoundingClientRect()
+    const MENU_WIDTH = 208 // w-52
+    const gap = 8
+    const preferredTop = rect.bottom + window.scrollY + gap
+    let left = rect.right + window.scrollX - MENU_WIDTH
+    left = Math.max(8, Math.min(left, window.scrollX + window.innerWidth - MENU_WIDTH - 8))
+    setMenuStyle({ top: preferredTop, left })
+  }, [])
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false)
-      }
+    if (!isOpen) return
+    positionMenu()
+    const onScrollOrResize = () => positionMenu()
+    window.addEventListener('scroll', onScrollOrResize, true)
+    window.addEventListener('resize', onScrollOrResize)
+    const onDocClick = (e) => {
+      if (!buttonRef.current) return
+      const target = e.target
+      if (buttonRef.current.contains(target)) return // clicking the button toggles separately
+      if (menuRef.current && menuRef.current.contains(target)) return
+      setIsOpen(false)
     }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [dropdownRef])
+    document.addEventListener('mousedown', onDocClick)
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true)
+      window.removeEventListener('resize', onScrollOrResize)
+      document.removeEventListener('mousedown', onDocClick)
+    }
+  }, [isOpen, positionMenu])
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        ref={buttonRef}
+        onClick={() => setIsOpen((v) => !v)}
         className="text-muted-foreground hover:text-foreground p-1 rounded-full focus:outline-none focus:ring-2 focus:ring-primary"
       >
         <MoreHorizontal size={18} />
       </button>
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-48 bg-card border border-border rounded-lg shadow-xl z-10">
-          <button
-            onClick={() => {
-              onViewAccount(client)
-              setIsOpen(false)
-            }}
-            className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
-          >
-            <Briefcase size={14} /> View Account
-          </button>
-          <button
-            onClick={() => {
-              onEdit(client)
-              setIsOpen(false)
-            }}
-            className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
-          >
-            <Edit size={14} /> Edit Parameters
-          </button>
-          <button
-            onClick={() => {
-              onViewAgreement(client)
-              setIsOpen(false)
-            }}
-            className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
-          >
-            <FileCheck size={14} /> View Agreement
-          </button>
-          <div className="border-t border-border my-1"></div>
-          <button
-            onClick={() => {
-              onSendToChecker(client)
-              setIsOpen(false)
-            }}
-            className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
-          >
-            <ArrowRight size={14} /> Send to Checker
-          </button>
-        </div>
-      )}
-    </div>
+      {isOpen && typeof document !== 'undefined' &&
+        (typeof window !== 'undefined' &&
+          require('react-dom').createPortal(
+            <div
+              ref={menuRef}
+              style={menuStyle}
+              className="fixed z-[2147483647] w-52 bg-card border border-border rounded-lg shadow-xl max-h-96 overflow-y-auto"
+            >
+              <div className="py-1">
+                <button
+                  onClick={() => {
+                    onViewAccount(client)
+                    setIsOpen(false)
+                  }}
+                  className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted rounded-t-lg"
+                >
+                  <Briefcase size={14} /> View Account
+                </button>
+                <button
+                  onClick={() => {
+                    onEdit(client)
+                    setIsOpen(false)
+                  }}
+                  className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  <Edit size={14} /> Edit Parameters
+                </button>
+                <button
+                  onClick={() => {
+                    onViewAgreement(client)
+                    setIsOpen(false)
+                  }}
+                  className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  <FileCheck size={14} /> View Agreement
+                </button>
+                <div className="border-t border-border my-1"></div>
+                <button
+                  onClick={() => {
+                    onSendToChecker(client)
+                    setIsOpen(false)
+                  }}
+                  className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted rounded-b-lg"
+                >
+                  <ArrowRight size={14} /> Send to Checker
+                </button>
+              </div>
+            </div>,
+            document.body
+          )
+        )}
+    </>
   )
 }
 
@@ -2225,7 +2289,7 @@ const ClientInformation = () => {
   const [activeClient, setActiveClient] = useState(clients[0])
   const [confirmation, setConfirmation] = useState({ show: false, message: "" })
   const [showUpload, setShowUpload] = useState(false)
-  const [showFirebaseTable, setShowFirebaseTable] = useState(false)
+  const [firebaseState, setFirebaseState] = useState<'mock' | 'firebase-data' | 'firebase-table'>('firebase-data')
   const { data: firebaseClients, loading: firebaseLoading, error: firebaseError } = useRealtimeCollection<any>('unified_data')
 
   const initialFilters = {
@@ -2243,8 +2307,8 @@ const ClientInformation = () => {
   const uniqueDomiciles = useMemo(() => [...new Set(clients.map((c) => c.domicile).filter(Boolean))], [clients])
   const uniqueCurrencies = useMemo(() => [...new Set(clients.flatMap((c) => c.currencies).filter(Boolean))], [clients])
 
-  // Use firebaseClients as the data source if showFirebaseTable is true, else use mock data
-  const displayClients = showFirebaseTable ? firebaseClients : clients
+  // Use firebaseClients as the data source based on firebaseState
+  const displayClients = (firebaseState === 'firebase-data' || firebaseState === 'firebase-table') ? firebaseClients : clients
 
   // Update filteredClients to use displayClients
   const filteredClients = useMemo(() => {
@@ -2387,7 +2451,7 @@ const ClientInformation = () => {
           </button>
           <button
             onClick={handleSaveToUnifiedData}
-            disabled={!showFirebaseTable || !firebaseClients || firebaseClients.length === 0}
+            disabled={firebaseState === 'mock' || !firebaseClients || firebaseClients.length === 0}
             className="flex items-center justify-center bg-purple-600 hover:bg-purple-500 disabled:bg-muted disabled:cursor-not-allowed text-white font-semibold px-3 py-1.5 text-xs rounded-lg transition-all duration-200"
           >
             <Save size={14} className="mr-2" /> Save to Unified Data
@@ -2399,10 +2463,22 @@ const ClientInformation = () => {
             <FileDown size={14} className="mr-2" /> Data Upload
           </button>
           <button
-            onClick={() => setShowFirebaseTable((prev) => !prev)}
-            className="flex items-center justify-center bg-orange-600 hover:bg-orange-500 text-white font-semibold px-3 py-1.5 text-xs rounded-lg transition-all duration-200"
+            onClick={() => {
+              setFirebaseState((prev) => {
+                if (prev === 'firebase-data') return 'mock'
+                if (prev === 'mock') return 'firebase-table'
+                return 'firebase-data'
+              })
+            }}
+            className={`flex items-center justify-center font-semibold px-3 py-1.5 text-xs rounded-lg transition-all duration-200 ${
+              firebaseState === 'mock' 
+                ? 'bg-orange-600 hover:bg-orange-500 text-white' 
+                : firebaseState === 'firebase-data'
+                ? 'bg-green-600 hover:bg-green-500 text-white'
+                : 'bg-blue-600 hover:bg-blue-500 text-white'
+            }`}
           >
-            <Database size={14} className="mr-2" /> Source Data from Firebase
+            <Database size={16} />
           </button>
           <DownloadDropdown onExport={handleExport} />
         </div>
@@ -2412,7 +2488,7 @@ const ClientInformation = () => {
             <ClientInfoCsvUploader collectionName="unified_data" onUploadComplete={() => setShowUpload(false)} />
           </div>
         )}
-      {showFirebaseTable && (
+      {firebaseState === 'firebase-table' && (
         <div className="mb-6">
           {firebaseLoading ? (
             <div className="text-center text-gray-400">Loading data from Firebase...</div>
@@ -2509,9 +2585,18 @@ const ClientInformation = () => {
       </div>
 
       <div className="mt-8">
-        <div className="bg-card rounded-xl shadow-lg border border-border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
+        {/* Firebase Data Indicator */}
+        {(firebaseState === 'firebase-data' || firebaseState === 'firebase-table') && (
+          <div className="flex items-center justify-end mb-4">
+            <div className="flex items-center gap-2 bg-transparent">
+              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-lg shadow-green-500/50"></div>
+            </div>
+          </div>
+        )}
+        
+        <div className="bg-card rounded-xl shadow-lg border border-border overflow-visible">
+          <div className="overflow-x-auto overflow-y-visible relative">
+            <table className="w-full text-left relative">
               <thead className="text-xs text-foreground uppercase bg-muted">
                 <tr>
                   <th scope="col" className="px-3 py-2">
@@ -2532,14 +2617,32 @@ const ClientInformation = () => {
                   <th scope="col" className="px-3 py-2">
                     Eligible Collateral
                   </th>
-                  <th scope="col" className="px-3 py-2 text-center">
+                  <th scope="col" className="px-3 py-2 text-center min-w-[100px] w-[100px]">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="text-xs">
-                {filteredClients.map((client) => (
-                  <tr key={client.clientId} className="border-b border-border hover:bg-muted/60">
+                {(firebaseLoading && (firebaseState === 'firebase-data' || firebaseState === 'firebase-table')) ? (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin"></div>
+                        Loading Firebase data...
+                      </div>
+                    </td>
+                  </tr>
+                ) : (firebaseError && (firebaseState === 'firebase-data' || firebaseState === 'firebase-table')) ? (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-8 text-center text-red-500">
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 text-red-500">⚠</div>
+                        Firebase Error: {firebaseError}
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredClients.map((client, index) => (
+                  <tr key={client.clientId || client.id || `client-${index}`} className="border-b border-border hover:bg-muted/60">
                     <td scope="row" className="px-3 py-2 font-medium text-foreground whitespace-nowrap">
                       {client.accountName}
                     </td>
@@ -2567,14 +2670,16 @@ const ClientInformation = () => {
                       })()}
                     </td>
                     <td className="px-3 py-2">{displayArrayField(client.assets)}</td>
-                    <td className="px-3 py-2 text-center">
-                      <ClientActionsDropdown
-                        client={client}
-                        onEdit={handleEditClick}
-                        onViewAccount={handleViewAccountClick}
-                        onViewAgreement={handleViewAgreementClick}
-                        onSendToChecker={handleSendToChecker}
-                      />
+                    <td className="px-3 py-2 text-center relative">
+                      <div className="relative">
+                        <ClientActionsDropdown
+                          client={client}
+                          onEdit={handleEditClick}
+                          onViewAccount={handleViewAccountClick}
+                          onViewAgreement={handleViewAgreementClick}
+                          onSendToChecker={handleSendToChecker}
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -2635,7 +2740,11 @@ const ClientContextualSummary = ({ clientId, clientSummaryData }) => {
       <div className="grid grid-cols-3 lg:grid-cols-6 gap-4 text-xs">
         <InfoField label="Total Exposure" value={formatCurrency(clientData.exposure)} />
         <InfoField label="MTA" value={formatCurrencyDetailed(clientData.mta.amount, clientData.mta.currency)} />
-        <InfoField label="Agreed Amt" value={formatCurrency(clientData.agreedAmount)} valueClass="text-green-600" />
+        <InfoField
+          label="Agreed Amt"
+          value={formatCurrencyDetailed(parseNumber(clientData.agreedAmount), clientData?.mta?.currency || 'USD')}
+          valueClass="text-green-600"
+        />
         <InfoField label="Value Date" value={clientData.valueDate} />
         <InfoField label="Disputed?" value={disputeText} valueClass={getDisputeStatusClass(clientData.disputeStatus)} />
         <InfoField
@@ -2661,29 +2770,145 @@ const MarginCallWorkflow = () => {
   const [showFirebaseTable, setShowFirebaseTable] = useState(false)
   const [showReconciliationUpload, setShowReconciliationUpload] = useState(false)
 
-  // When showFirebaseTable is true, use Firebase data for the main UI if available
-  useEffect(() => {
-    if (showFirebaseTable && firebaseData.length > 0) {
-      const mapped = firebaseData.map((row) => ({
-        id: row.id,
-        direction: row.direction || 'inbound',
-        clientId: row.clientId || row.client_id || '',
-        counterparty: row.counterparty || '',
-        callAmount: row.callAmount || row.call_amount || 0,
-        currency: row.currency || 'USD',
-        exposure: row.exposure || 0,
-        bookingStatus: row.bookingStatus || row.booking_status || 'Fully Booked',
-        disputeAmount: row.disputeAmount || row.dispute_amount || 0,
-        priceMovement: row.priceMovement || row.price_movement || 0,
-        bookingType: row.bookingType || row.booking_type || 'Manual',
-        disputeReason: row.disputeReason || row.dispute_reason || '',
-        portfolio: row.portfolio || [],
-      }))
-      setCalls(mapped)
+  // 3-state firebase toggle for workflow: default to firebase-data like Client Info
+  const [workflowFirebaseState, setWorkflowFirebaseState] = useState<'mock' | 'firebase-data' | 'firebase-table'>('firebase-data')
+
+  // Helpers to robustly map Firebase/unified rows
+  function parseNumber(value) {
+    if (value === null || value === undefined || value === '') return 0
+    const n = Number(String(value).replace(/,/g, ''))
+    return Number.isFinite(n) ? n : 0
+  }
+
+  const extractMta = (row) => {
+    // If nested object exists
+    if (row?.mta && typeof row.mta === 'object') {
+      const amt = parseNumber(row.mta.amount)
+      const cur = normalizeCurrencyCode(row.mta.currency || row.reportingCurrency || row.currency || 'USD')
+      return { amount: amt, currency: cur }
+    }
+    // Flat fields in various shapes
+    const amountCandidate =
+      row.mtaAmount ??
+      row.mta_amount ??
+      row['mta.amount'] ??
+      row.MinimumTransferAmount ??
+      row['Minimum Transfer Amount'] ??
+      row.minTransferAmount ??
+      row.minimumTransferAmount ??
+      row.MTA ??
+      row.mta // sometimes string like "500000 USD"
+
+    let amount = 0
+    let currency = row.mtaCurrency || row.mta_currency || row['mta.currency'] || row.reportingCurrency || row.currency || 'USD'
+
+    if (typeof amountCandidate === 'string' && amountCandidate.includes(' ')) {
+      const parts = amountCandidate.trim().split(/\s+/)
+      amount = parseNumber(parts[0])
+      if (parts[1]) currency = parts[1]
     } else {
+      amount = parseNumber(amountCandidate)
+    }
+
+    return { amount, currency: normalizeCurrencyCode(currency) }
+  }
+
+  const normalizeDirection = (row) => {
+    const raw = (row.direction || row.dir || row.callDirection || row.flow || '').toString().toLowerCase()
+    if (raw.includes('in') || raw.includes('receiv')) return 'inbound'
+    if (raw.includes('out') || raw.includes('payab') || raw.includes('deliver')) return 'outbound'
+    // Derive from payableBy if present
+    const payable = (row.payableBy || row.payable_by || '').toString().toLowerCase()
+    if (payable.includes('barclays')) return 'outbound'
+    if (payable.includes('client')) return 'inbound'
+    return 'inbound'
+  }
+
+  const coercePortfolio = (row, id, currency) => {
+    if (Array.isArray(row.portfolio)) {
+      return row.portfolio.map((t, i) => ({
+        tradeId: t.tradeId || t.tradeID || t.id || `${id}-T${i + 1}`,
+        pnl: parseNumber(t.pnl || t.PnL || t.profit || t.delta),
+        priceChange: parseNumber(t.priceChange || t.price_change || t.pct || t.changePct)
+      }))
+    }
+    if (Array.isArray(row.trades)) {
+      return row.trades.map((t, i) => ({
+        tradeId: t.tradeId || t.tradeID || t.id || `${id}-T${i + 1}`,
+        pnl: parseNumber(t.pnl || t.PnL || t.profit || t.delta),
+        priceChange: parseNumber(t.priceChange || t.price_change || t.pct || t.changePct)
+      }))
+    }
+    // Fallback synthesized portfolio
+    return generateFallbackPortfolio(id, currency)
+  }
+
+  // Normalizer to map Firebase rows into our call shape
+  const mapFirebaseRowToCall = (row) => {
+    const id = row.id || 'MC-FB'
+    const currency = normalizeCurrencyCode(row.currency || row.reportingCurrency || 'USD')
+    const callAmt = parseNumber(row.callAmount || row.amount)
+    const dispAmt = parseNumber(row.disputeAmount)
+    const agreedRaw = row.agreedAmount ?? row.agreed_amount ?? row.agreedAmt ?? row['Agreed Amount'] ?? row.agreed
+    const agreedParsed = parseNumber(agreedRaw)
+    const agreedVal = agreedParsed > 0 ? agreedParsed : Math.max(0, callAmt - dispAmt)
+    return {
+      id,
+      clientId: row.client || row.clientId || row.client_id || row.CID || 'CLIENT',
+      counterparty: row.counterparty || 'Counterparty',
+      bookingType: row.bookingType || 'Manual',
+      currency,
+      exposure: parseNumber(row.exposure),
+      callAmount: callAmt,
+      disputeAmount: dispAmt,
+      agreedAmount: agreedVal,
+      disputeReason: row.disputeReason || '',
+      direction: normalizeDirection(row),
+      portfolio: coercePortfolio(row, id, currency),
+      bookingStatus: row.bookingStatus || 'Pending',
+      mta: extractMta(row),
+    }
+  }
+
+  // Generate a deterministic fallback portfolio when source data lacks one
+  const generateFallbackPortfolio = (seedId, currency) => {
+    const base = (seedId || 'MC').toString()
+    const code = base.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+    const pos = (code % 5000) + 3000
+    const neg = -((code % 4000) + 1500)
+    const pos2 = ((code % 7000) + 5000)
+    return [
+      { tradeId: `${base}-T1`, pnl: pos, priceChange: 0.25 },
+      { tradeId: `${base}-T2`, pnl: neg, priceChange: -0.12 },
+      { tradeId: `${base}-T3`, pnl: pos2, priceChange: 0.4 },
+    ]
+  }
+
+  // Keep selectedCall in sync with current calls (normalized for the active source)
+  useEffect(() => {
+    if (calls && calls.length > 0) {
+      setSelectedCall(calls[0])
+    }
+  }, [workflowFirebaseState, calls])
+
+  // When Firebase table is active, or when the data source is firebase, apply mapping; otherwise keep mock
+  useEffect(() => {
+    const shouldUseFirebase = (workflowFirebaseState === 'firebase-data' || workflowFirebaseState === 'firebase-table')
+    if (shouldUseFirebase && firebaseData.length > 0) {
+      const mapped = firebaseData.map(mapFirebaseRowToCall)
+      // Enforce a 50/50 split: first half inbound, second half outbound
+      const n = mapped.length
+      const splitIndex = Math.floor(n / 2)
+      const normalized = mapped.map((c, idx) => ({
+        ...c,
+        direction: idx < splitIndex ? 'inbound' : 'outbound',
+      }))
+      setCalls(normalized)
+    }
+    if (workflowFirebaseState === 'mock') {
       setCalls(marginCallData)
     }
-  }, [showFirebaseTable, firebaseData])
+  }, [workflowFirebaseState, firebaseData])
 
   const clientSummaryData = useMemo(() => {
     const uniqueClientIds = [...new Set(calls.map((call) => call.clientId))]
@@ -2696,8 +2921,13 @@ const MarginCallWorkflow = () => {
       }
 
       const totalExposure = clientCalls.reduce((sum, call) => sum + call.exposure, 0)
-      const totalCallAmount = clientCalls.reduce((sum, call) => sum + call.callAmount, 0)
-      const totalDisputeAmount = clientCalls.reduce((sum, call) => sum + call.disputeAmount, 0)
+      const totalCallAmount = clientCalls.reduce((sum, call) => sum + parseNumber(call.callAmount), 0)
+      const totalDisputeAmount = clientCalls.reduce((sum, call) => sum + parseNumber(call.disputeAmount), 0)
+      const totalAgreedAmount = clientCalls.reduce((sum, call) => {
+        const agreed = parseNumber(call.agreedAmount)
+        if (agreed > 0) return sum + agreed
+        return sum + Math.max(0, parseNumber(call.callAmount) - parseNumber(call.disputeAmount))
+      }, 0)
 
       const numCalls = clientCalls.length
       const numSettled = clientCalls.filter((c) => c.bookingStatus === "Fully Booked").length
@@ -2706,13 +2936,18 @@ const MarginCallWorkflow = () => {
       if (numSettled === numCalls) settlementStatus = "Settled"
       else if (numSettled > 0) settlementStatus = "Partially Settled"
 
+      const derivedMta = (() => {
+        const withMta = clientCalls.find((c) => c?.mta && parseNumber(c.mta.amount) > 0)
+        return withMta?.mta || clientInfo.mta
+      })()
+
       return {
         clientId: clientId,
         clientName: clientInfo.accountName,
         exposure: totalExposure,
-        mta: clientInfo.mta,
+        mta: derivedMta,
         callAmount: totalCallAmount,
-        agreedAmount: totalCallAmount - totalDisputeAmount,
+        agreedAmount: totalAgreedAmount,
         disputedAmount: totalDisputeAmount,
         disputeStatus: totalDisputeAmount > 0 ? "Yes" : "No",
         valueDate: formatDate(new Date()),
@@ -2850,7 +3085,8 @@ const MarginCallWorkflow = () => {
   )
 
   const PortfolioTable = ({ portfolio, currency, isDisputed, direction }) => {
-    const netPnl = portfolio.reduce((acc, trade) => acc + trade.pnl, 0)
+    const safePortfolio = Array.isArray(portfolio) ? portfolio : []
+    const netPnl = safePortfolio.reduce((acc, trade) => acc + (Number(trade.pnl) || 0), 0)
     const payableBy = direction === "inbound" ? "BARCLAYS" : "CLIENT"
 
     return (
@@ -2875,16 +3111,16 @@ const MarginCallWorkflow = () => {
               </tr>
             </thead>
             <tbody>
-              {portfolio.map((trade) => (
+              {safePortfolio.map((trade) => (
                 <tr key={trade.tradeId} className="border-b border-border">
                   <td className="p-3 font-mono">{trade.tradeId}</td>
-                  <td className={`p-3 text-right font-mono ${trade.pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    {formatCurrencyDetailed(trade.pnl, currency)}
+                  <td className={`p-3 text-right font-mono ${(Number(trade.pnl) || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {formatCurrencyDetailed(Number(trade.pnl) || 0, currency)}
                   </td>
                   <td
-                    className={`p-3 text-right font-mono ${trade.priceChange >= 0 ? "text-green-600" : "text-red-600"}`}
+                    className={`p-3 text-right font-mono ${(Number(trade.priceChange) || 0) >= 0 ? "text-green-600" : "text-red-600"}`}
                   >
-                    {trade.priceChange.toFixed(2)}%
+                    {(Number(trade.priceChange) || 0).toFixed(2)}%
                   </td>
                   <td className={`p-3 text-right font-medium ${trade.pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
                     {direction === "inbound" ? "BARCLAYS" : "CLIENT"}
@@ -2902,7 +3138,7 @@ const MarginCallWorkflow = () => {
                 </td>
                 <td className="p-3 text-foreground text-right">Net Payable By:</td>
                 <td className={`p-3 text-right font-medium ${netPnl >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  {payableBy}
+                  {direction === "inbound" ? "BARCLAYS" : "CLIENT"}
                 </td>
               </tr>
             </tfoot>
@@ -2942,18 +3178,34 @@ const MarginCallWorkflow = () => {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-3xl font-bold text-foreground">Workflow</h2>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* Green indicator when using Firebase data */}
+          {(workflowFirebaseState === 'firebase-data' || workflowFirebaseState === 'firebase-table') && (
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+          )}
           <Button
-            variant={showFirebaseTable ? 'default' : 'outline'}
-            onClick={() => setShowFirebaseTable((prev) => !prev)}
             size="sm"
+            className={`${
+              workflowFirebaseState === 'mock'
+                ? 'bg-orange-600 hover:bg-orange-500 text-white'
+                : workflowFirebaseState === 'firebase-data'
+                ? 'bg-green-600 hover:bg-green-500 text-white'
+                : 'bg-blue-600 hover:bg-blue-500 text-white'
+            }`}
+            onClick={() => {
+              setWorkflowFirebaseState((prev) => {
+                if (prev === 'firebase-data') return 'mock'
+                if (prev === 'mock') return 'firebase-table'
+                return 'firebase-data'
+              })
+            }}
           >
-            Source Data from Firebase
+            <Database size={16} />
           </Button>
         </div>
       </div>
       
-      {showFirebaseTable && (
+      {workflowFirebaseState === 'firebase-table' && (
         <div className="mb-6">
           {firebaseLoading ? (
             <div className="text-center text-muted-foreground">Loading data from Firebase...</div>
@@ -2996,7 +3248,7 @@ const MarginCallWorkflow = () => {
         </div>
       )}
       
-      {/* Mock data UI always visible */}
+      {/* Main workflow UI uses selected data source */}
       <h2 className="text-3xl font-bold text-foreground mb-2">Workflow Management</h2>
       <p className="text-muted-foreground mb-6">Live margin call activity for {formatDate(new Date())}.</p>
       <div className="flex items-start">
@@ -3069,7 +3321,11 @@ const MarginCallWorkflow = () => {
                       />
                       <InfoField
                         label="Agreed Amount"
-                        value={`${selectedCall.currency} ${formatNumber(selectedCall.callAmount - selectedCall.disputeAmount)}`}
+                        value={(() => {
+                          const agreed = parseNumber(selectedCall?.agreedAmount)
+                          const fallback = Math.max(0, parseNumber(selectedCall?.callAmount) - parseNumber(selectedCall?.disputeAmount))
+                          return formatCurrencyDetailed(agreed > 0 ? agreed : fallback, selectedCall?.currency)
+                        })()}
                         valueClass="text-green-400"
                       />
                     </>
@@ -3330,7 +3586,7 @@ const DailyActivityLog = () => {
   const [selectedDate, setSelectedDate] = useState(getISODateString(new Date()))
   const [filters, setFilters] = useState({ searchQuery: "", status: "all", direction: "all" })
   const [showUpload, setShowUpload] = useState(false)
-  const [showFirebaseTable, setShowFirebaseTable] = useState(false)
+  const [firebaseState, setFirebaseState] = useState<'mock' | 'firebase-data' | 'firebase-table'>('firebase-data')
   const { data: firebaseActivities, loading: firebaseLoading, error: firebaseError } = useRealtimeCollection<any>('unified_data')
 
   const formatMarginInMillions = (value) => {
@@ -3452,13 +3708,15 @@ const DailyActivityLog = () => {
     const daysAgoPrevious = daysAgoCurrent + 1
     const previousData = generateDailyData(getISODateString(previousDate), daysAgoPrevious)
 
-    const displayActivities = showFirebaseTable ? firebaseActivities : currentData;
+    const displayActivities = (firebaseState === 'firebase-data' || firebaseState === 'firebase-table') ? firebaseActivities : currentData;
 
     // Filtering and stats logic for displayActivities
     const filtered = displayActivities.filter((item) => {
       const searchMatch =
         filters.searchQuery === "" ||
         (item.client?.toLowerCase?.().includes(filters.searchQuery.toLowerCase())) ||
+        (item.clientId?.toLowerCase?.().includes(filters.searchQuery.toLowerCase())) ||
+        (item.CID?.toLowerCase?.().includes(filters.searchQuery.toLowerCase())) ||
         (item.id?.toLowerCase?.().includes(filters.searchQuery.toLowerCase()))
       const statusMatch = filters.status === "all" || item.status === filters.status
       const directionMatch = filters.direction === "all" || item.dir === filters.direction
@@ -3473,7 +3731,7 @@ const DailyActivityLog = () => {
       displayData: filtered,
       uniqueStatuses: uniqueStatusesForDay,
     }
-  }, [selectedDate, filters, showFirebaseTable, firebaseActivities])
+  }, [selectedDate, filters, firebaseState, firebaseActivities])
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target
@@ -3569,10 +3827,22 @@ const DailyActivityLog = () => {
             <FileDown size={14} className="mr-2" /> Data Upload
           </button>
           <button
-            onClick={() => setShowFirebaseTable((prev) => !prev)}
-            className="flex items-center justify-center bg-yellow-600 hover:bg-yellow-500 text-white font-semibold px-3 py-1.5 text-xs rounded-lg transition-all duration-200"
+            onClick={() => {
+              setFirebaseState((prev) => {
+                if (prev === 'firebase-data') return 'mock'
+                if (prev === 'mock') return 'firebase-table'
+                return 'firebase-data'
+              })
+            }}
+            className={`flex items-center justify-center font-semibold px-3 py-1.5 text-xs rounded-lg transition-all duration-200 ${
+              firebaseState === 'mock' 
+                ? 'bg-orange-600 hover:bg-orange-500 text-white' 
+                : firebaseState === 'firebase-data'
+                ? 'bg-green-600 hover:bg-green-500 text-white'
+                : 'bg-blue-600 hover:bg-blue-500 text-white'
+            }`}
           >
-            <Database size={14} className="mr-2" /> Source Data from Firebase
+            <Database size={14} />
           </button>
         </div>
       </div>
@@ -3581,7 +3851,7 @@ const DailyActivityLog = () => {
           <DailyActivityCsvUploader collectionName="unified_data" onUploadComplete={() => setShowUpload(false)} />
         </div>
       )}
-      {showFirebaseTable && (
+      {firebaseState === 'firebase-table' && (
         <div className="mb-6">
           {firebaseLoading ? (
             <div className="text-center text-gray-400">Loading data from Firebase...</div>
@@ -3643,6 +3913,13 @@ const DailyActivityLog = () => {
         </div>
         <p className="text-lg font-semibold text-foreground">{formatDate(selectedDate)}</p>
       </div>
+
+      {/* Firebase Data Indicator */}
+      {(firebaseState === 'firebase-data' || firebaseState === 'firebase-table') && (
+        <div className="flex items-center justify-end mb-4">
+          <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-lg shadow-green-500/50"></div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
@@ -3745,8 +4022,8 @@ const DailyActivityLog = () => {
                 <React.Fragment key={item.id}>
                   <tr className="border-b border-border">
                     <td className="py-3 px-4 font-mono text-muted-foreground">{item.id}</td>
-                    <td className="py-3 px-4 font-mono text-muted-foreground">{item.traderId || item.trader_id || item.id}</td>
-                    <td className="py-3 px-4 font-medium text-foreground">{item.client}</td>
+                    <td className="py-3 px-4 font-mono text-muted-foreground">{item.traderID || item.traderId || item.trader_id || 'N/A'}</td>
+                    <td className="py-3 px-4 font-medium text-foreground">{item.client || item.clientId || item.client_id || item.CID || 'N/A'}</td>
                     <td
                       className={`py-3 px-4 font-medium ${item.dir === "Payable" ? "text-red-600" : "text-green-600"}`}
                     >
@@ -3778,18 +4055,18 @@ const DailyActivityLog = () => {
                             <div className="text-xs space-y-2 text-muted-foreground">
                               <p>
                                 <span className="font-semibold text-muted-foreground">Flow:</span>{" "}
-                                {item.dir === "Payable" ? `Barclays -> ${item.client}` : `${item.client} -> Barclays`}
+                                {item.dir === "Payable" ? `Barclays -> ${item.client || item.clientId || item.CID || 'Client'}` : `${item.client || item.clientId || item.CID || 'Client'} -> Barclays`}
                               </p>
                               <p>
                                 <span className="font-semibold text-muted-foreground">Account:</span>{" "}
-                                <span className="font-mono">{item.acct || item.account || "N/A"}</span>
+                                <span className="font-mono">{item.account || item.acct || item.accountNumber || item.account_number || "N/A"}</span>
                               </p>
                               <p>
                                 <span className="font-semibold text-muted-foreground">Status:</span>{" "}
-                                <span className="font-medium">{item.status || item.pmtStatus || "N/A"}</span>
+                                <span className="font-medium">{item.status || item.callStatus || item.call_status || item.pmtStatus || item.paymentStatus || "N/A"}</span>
                               </p>
                               <p>
-                                <span className="font-semibold text-muted-foreground">Ops Team Notes:</span> {item.notes}
+                                <span className="font-semibold text-muted-foreground">Ops Team Notes:</span> {item.notes || item.opsNotes || item.ops_notes || item.comments || "N/A"}
                               </p>
                             </div>
                             <div className="mt-4">
@@ -3875,7 +4152,7 @@ const DailyActivityLog = () => {
 // --- Reconciliation Component ---
 const Reconciliation = () => {
   const [showUpload, setShowUpload] = useState(false);
-  const [showFirebaseTable, setShowFirebaseTable] = useState(false);
+  const [firebaseState, setFirebaseState] = useState<'mock' | 'firebase-data' | 'firebase-table'>('firebase-data');
   const initialRecData = useMemo(() => {
     const data = [
       {
@@ -3989,7 +4266,7 @@ const Reconciliation = () => {
   
   // Debug logging for reconciliation data
   React.useEffect(() => {
-    if (showFirebaseTable && firebaseRecData.data) {
+    if ((firebaseState === 'firebase-data' || firebaseState === 'firebase-table') && firebaseRecData.data) {
       console.log('[DEBUG] Reconciliation Firebase data:', {
         totalRecords: firebaseRecData.data.length,
         records: firebaseRecData.data.map(record => ({
@@ -3999,10 +4276,43 @@ const Reconciliation = () => {
         }))
       });
     }
-  }, [firebaseRecData.data, showFirebaseTable]);
+  }, [firebaseRecData.data, firebaseState]);
   
   // Use Firebase data if toggled on, always as array
-  const displayRecData = showFirebaseTable ? (firebaseRecData.data || []) : recData;
+  const displayRecData = (firebaseState === 'firebase-data' || firebaseState === 'firebase-table') 
+    ? (firebaseRecData.data || []).map(row => ({
+        marginCallId: row.marginCallId || row.margin_call_id || row.id || 'N/A',
+        clientId: row.clientId || row.client_id || row.CID || 'N/A',
+        agreedAmount: parseFloat(row.agreedAmount || row.agreed_amount || row.callAmount || row.amount || 0),
+        receivedAmount: parseFloat(row.receivedAmount || row.received_amount || row.settledAmount || row.actualAmount || 0),
+        settlementDate: row.settlementDate || row.settlement_date || row.valueDate || row.date || 'N/A',
+        reason: row.reason || row.notes || row.comments || 'No reason provided',
+        direction: row.direction || row.dir || 'Receivable',
+        status: (() => {
+          if (row.status) return row.status;
+          const agreed = parseFloat(row.agreedAmount || row.agreed_amount || row.callAmount || row.amount || 0);
+          const receivedRaw = row.receivedAmount || row.received_amount || row.settledAmount || row.actualAmount;
+          
+          // Check if receivedAmount exists and is not null/empty
+          if (receivedRaw === null || receivedRaw === undefined || receivedRaw === '' || receivedRaw === 0) {
+            return "Failed";
+          }
+          
+          const received = parseFloat(receivedRaw);
+          if (isNaN(received) || received <= 0) {
+            return "Failed";
+          }
+          
+          const difference = Math.abs(received - agreed);
+          return difference < 1 ? "Matched" : "Break";
+        })(),
+        difference: (() => {
+          const agreed = parseFloat(row.agreedAmount || row.agreed_amount || row.callAmount || row.amount || 0);
+          const received = parseFloat(row.receivedAmount || row.received_amount || row.settledAmount || row.actualAmount || 0);
+          return received - agreed;
+        })()
+      }))
+    : recData;
 
   const filteredRecData = useMemo(() => {
     return displayRecData.filter((item) => {
@@ -4106,10 +4416,22 @@ const Reconciliation = () => {
             <FileDown size={14} className="mr-2" /> Data Upload
           </button>
           <button
-            onClick={() => setShowFirebaseTable((prev) => !prev)}
-            className="flex items-center justify-center bg-amber-600 hover:bg-amber-500 text-white font-semibold px-3 py-1.5 text-xs rounded-lg transition-all duration-200"
+            onClick={() => {
+              setFirebaseState((prev) => {
+                if (prev === 'firebase-data') return 'mock'
+                if (prev === 'mock') return 'firebase-table'
+                return 'firebase-data'
+              })
+            }}
+            className={`flex items-center justify-center font-semibold px-3 py-1.5 text-xs rounded-lg transition-all duration-200 ${
+              firebaseState === 'mock' 
+                ? 'bg-orange-600 hover:bg-orange-500 text-white' 
+                : firebaseState === 'firebase-data'
+                ? 'bg-green-600 hover:bg-green-500 text-white'
+                : 'bg-blue-600 hover:bg-blue-500 text-white'
+            }`}
           >
-            <Database size={14} className="mr-2" /> Source Data from Firebase
+            <Database size={14} />
           </button>
         </div>
       </div>
@@ -4118,11 +4440,18 @@ const Reconciliation = () => {
           <ReconciliationCsvUploader collectionName="reconciliation" onUploadComplete={() => setShowUpload(false)} />
         </div>
       )}
-      {showFirebaseTable && (
+      {firebaseState === 'firebase-table' && (
         <div className="mb-6">
           <RealtimeEditableTable collectionName="unified_data" />
         </div>
       )}
+      {/* Firebase Data Indicator */}
+      {(firebaseState === 'firebase-data' || firebaseState === 'firebase-table') && (
+        <div className="flex items-center justify-end mb-4">
+          <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-lg shadow-green-500/50"></div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-8">
         <RecStatCard title="Total Items" value={stats.total} />
         <RecStatCard title="Matched" value={stats.matched} valueClass="text-green-600" />
@@ -4201,13 +4530,13 @@ const Reconciliation = () => {
             </thead>
             <tbody>
               {filteredRecData.map((item) => {
-                const diffClass = item.status === "Break" ? "text-yellow-600" : "text-muted-foreground"
+                const diffAbs = Math.abs(Number(item.difference) || 0)
+                const computedStatus = diffAbs < 1 ? "Matched" : "Break"
+                const diffClass = computedStatus === "Break" ? "text-yellow-600" : "text-muted-foreground"
                 const statusClass =
-                  item.status === "Matched"
+                  computedStatus === "Matched"
                     ? "bg-green-100 text-green-700"
-                    : item.status === "Break"
-                      ? "bg-yellow-100 text-yellow-700"
-                      : "bg-red-100 text-red-700"
+                    : "bg-yellow-100 text-yellow-700"
                 return (
                   <tr key={item.marginCallId} className="border-b border-border text-xs leading-tight">
                     <td className="py-2 px-4 font-mono text-muted-foreground">{item.marginCallId}</td>
@@ -4234,12 +4563,12 @@ const Reconciliation = () => {
                     </td>
                     <td className="py-2 px-4">
                       <span className={`${statusClass} text-xs font-medium px-2.5 py-1 rounded-full`}>
-                        {item.status}
+                        {computedStatus}
                       </span>
                     </td>
                     <td className="py-2 px-4">{item.settlementDate}</td>
                     <td className="py-2 px-4 text-center">
-                      {item.status === "Break" ? (
+                      {Math.abs(Number(item.difference) || 0) >= 1 ? (
                         <button
                           onClick={() => handleInvestigate(item)}
                           className="text-primary hover:text-primary/80 text-xs font-semibold"
